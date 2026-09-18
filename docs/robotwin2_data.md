@@ -44,4 +44,6 @@ unzip -q -o assets/embodiments.zip -d assets/robotwin
 - 采样：domain-balanced 和 tempered `T=2` 均通过 10,000 次抽样，最大绝对误差分别为 `0.00553` 和 `0.00455`。
 - 每个 domain 的窗口数：`aloha-agilex=57,292`、`ARX-X5=51,371`、`piper-dual=40,602`。
 
-`configs/robotwin2_ft/base_poses.json` 记录了三个 domain 的 robot-base pose；ARX-X5 和双 Piper 使用 `[robot, robot, 0.60]` 的双臂任务语义。正式仿真 rollout 前仍应按实验设计中的 Stage A preflight 对该间距和双臂 task config 做一次 simulator round-trip 验证。
+Stage A simulator preflight 已完成：固定 RoboTwin `96c1fea` 的代码通过临时 overlay 运行，三种具身×五个任务共 15/15 通过 `setup_demo`、官方 clean archive 的 `episode0` seed 轨迹 replay、`play_once` 和 `check_success`。结果与日志见 [`outputs/robotwin_ft/preflight_stage_a/summary.json`](../outputs/robotwin_ft/preflight_stage_a/summary.json)；runner 为 [`scripts/robotwin2_sim_preflight.py`](../scripts/robotwin2_sim_preflight.py)。Aloha、ARX-X5、双 Piper 的观测相机均包含 `head_camera`、`left_camera`、`right_camera`，三者 arm dim 均为 `[6,6]`，control gripper dim 为 `[1,1]`。
+
+`configs/robotwin2_ft/base_poses.json` 记录了三个 domain 的 robot-base pose；ARX-X5 和双 Piper 使用 `[robot, robot, 0.60]` 的双臂任务语义。正式模型仿真 rollout 尚未开始；后续仍需在模型 client action base/world round-trip 和 receding-horizon 协议下执行阶段 D。

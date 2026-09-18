@@ -356,7 +356,7 @@ RoboTwin 的 `take_action(action_type='ee')` 接受 world-frame target pose；�
 ### 阶段 A：具身/仿真 preflight（无模型）
 
 - [x] 三个具身的 asset、URDF、左右 arm dim 均为 `[6,6]`，gripper dim 为 `[1,1]`。
-- [ ] 五个 task 在三种具身上均能 `setup_demo`，并能成功跑至少一个官方 seed。
+- [x] 五个 task 在三种具身上均能 `setup_demo`，并能成功跑至少一个官方 seed。
 - [x] head/left/right 三路相机均存在，分辨率和帧数一致；HDF5 schema audit 通过。
 - [x] 官方 `decode_image_bit` 输出 RGB；抽查一帧确认没有额外 BGR 交换。
 - [x] pose quaternion 确认为 transforms3d scalar-first；6D round-trip 通过。
