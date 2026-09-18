@@ -355,18 +355,18 @@ RoboTwin 的 `take_action(action_type='ee')` 接受 world-frame target pose；�
 
 ### 阶段 A：具身/仿真 preflight（无模型）
 
-- [ ] 三个具身的 asset、URDF、左右 arm dim 均为 `[6,6]`，gripper dim 为 `[1,1]`。
+- [x] 三个具身的 asset、URDF、左右 arm dim 均为 `[6,6]`，gripper dim 为 `[1,1]`。
 - [ ] 五个 task 在三种具身上均能 `setup_demo`，并能成功跑至少一个官方 seed。
-- [ ] head/left/right 三路相机均存在，分辨率和帧数一致；HDF5 schema audit 通过。
-- [ ] 官方 `decode_image_bit` 输出 RGB；抽查一帧确认没有额外 BGR 交换。
-- [ ] pose quaternion 确认为 transforms3d scalar-first；6D round-trip 通过。
+- [x] head/left/right 三路相机均存在，分辨率和帧数一致；HDF5 schema audit 通过。
+- [x] 官方 `decode_image_bit` 输出 RGB；抽查一帧确认没有额外 BGR 交换。
+- [x] pose quaternion 确认为 transforms3d scalar-first；6D round-trip 通过。
 
 ### 阶段 B：数据转换与 sampler preflight
 
-- [ ] 15 个 `domain × task` 都有 manifest。
+- [x] 15 个 `domain × task` 都有 manifest。
 - [ ] 每个样本是 `image_input [3,3,224,224]`、`image_mask [3]` 全 True、`proprio [20]`、`action [30,20]`、`domain_id∈{0,1,2}`。
-- [ ] 所有窗口 horizon 恰为 1.0 秒；尾部查询超出 episode 时仅使用当前 episode 的末帧 clamp，并已标记 `terminal_hold`；所有值 finite。
-- [ ] `N_dt/N_d`、balanced 和 tempered(T=2) 概率可复算；10,000 次抽样误差 <2%。
+- [x] 所有窗口 horizon 恰为 1.0 秒；尾部查询超出 episode 时仅使用当前 episode 的末帧 clamp，并已标记 `terminal_hold`；所有值 finite。
+- [x] `N_dt/N_d`、balanced 和 tempered(T=2) 概率可复算；10,000 次抽样误差 <2%。
 - [ ] 一个 batch 同时出现多个 domain，且三 domain 的计数与目标频率一致。
 
 ### 阶段 C：模型 smoke test
