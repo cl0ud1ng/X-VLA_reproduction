@@ -1,0 +1,68 @@
+{
+  "aloha-agilex": {
+    "left": [
+      0.0,
+      -0.65,
+      0.0,
+      0.707,
+      0.0,
+      0.0,
+      0.707
+    ],
+    "right": [
+      0.0,
+      -0.65,
+      0.0,
+      0.707,
+      0.0,
+      0.0,
+      0.707
+    ],
+    "source": "RoboTwin@96c1fea assets/embodiments/aloha-agilex/config.yml; dual-arm single entity",
+    "embodiment_distance": null
+  },
+  "arx-x5": {
+    "left": [
+      -0.3,
+      -0.35,
+      0.784,
+      0.707,
+      0.0,
+      0.0,
+      0.707
+    ],
+    "right": [
+      0.3,
+      -0.35,
+      0.784,
+      0.707,
+      0.0,
+      0.0,
+      0.707
+    ],
+    "source": "RoboTwin@96c1fea assets/embodiments/ARX-X5/config.yml plus official clean dual-arm distance 0.60 m",
+    "embodiment_distance": 0.6
+  },
+  "piper": {
+    "left": [
+      -0.3,
+      -0.45,
+      0.75,
+      0.707,
+      0.0,
+      0.0,
+      0.707
+    ],
+    "right": [
+      0.3,
+      -0.45,
+      0.75,
+      0.707,
+      0.0,
+      0.0,
+      0.707
+    ],
+    "source": "project-downloaded RoboTwin embodiments.zip piper/config.yml; dual-piper distance 0.60 m (must pass preflight)",
+    "embodiment_distance": 0.6
+  }
+}

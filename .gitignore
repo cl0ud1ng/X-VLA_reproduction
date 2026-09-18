@@ -221,3 +221,9 @@ demo.ipynb
 
 # Downloaded X-VLA base model weights
 models/X-VLA-Pt/
+# RoboTwin2 official downloaded data/assets and generated preprocessing outputs
+assets/embodiments.zip
+assets/robotwin/
+data/raw/
+data/processed/
+outputs/robotwin_ft/

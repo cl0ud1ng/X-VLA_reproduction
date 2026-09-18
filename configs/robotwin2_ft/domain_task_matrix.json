@@ -1,0 +1,71 @@
+{
+  "robowin_commit": "96c1fea",
+  "xpolicylab_commit": "c37109c",
+  "asset_root": "assets/robotwin/embodiments",
+  "tasks": [
+    "beat_block_hammer",
+    "stack_blocks_two",
+    "move_can_pot",
+    "open_microwave",
+    "place_dual_shoes"
+  ],
+  "domains": [
+    {
+      "domain_id": 0,
+      "name": "aloha-agilex",
+      "embodiment": [
+        "aloha-agilex"
+      ],
+      "arm_dim": [
+        6,
+        6
+      ],
+      "gripper_dim": [
+        1,
+        1
+      ],
+      "base_pose_key": "aloha-agilex"
+    },
+    {
+      "domain_id": 1,
+      "name": "ARX-X5",
+      "embodiment": [
+        "ARX-X5",
+        "ARX-X5",
+        0.6
+      ],
+      "arm_dim": [
+        6,
+        6
+      ],
+      "gripper_dim": [
+        1,
+        1
+      ],
+      "base_pose_key": "arx-x5"
+    },
+    {
+      "domain_id": 2,
+      "name": "piper-dual",
+      "embodiment": [
+        "piper",
+        "piper",
+        0.6
+      ],
+      "arm_dim": [
+        6,
+        6
+      ],
+      "gripper_dim": [
+        1,
+        1
+      ],
+      "base_pose_key": "piper"
+    }
+  ],
+  "notes": {
+    "piper_asset": "assets/robotwin/embodiments/piper",
+    "distance_status": "0.60 m is the clean dual-arm archive/task setting recorded for preprocessing; run simulator Stage A preflight before rollout.",
+    "action": "absolute EEF6D in each arm robot-base frame; 20 dimensions; gripper 0=open, 1=closed"
+  }
+}
