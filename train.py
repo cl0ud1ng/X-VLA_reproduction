@@ -205,9 +205,11 @@ def main(args):
         project_dir=output_dir
     )
     tracker_kwargs = {}
+    tracker_name = "XVLA-Training"
     if args.report_to in ("wandb", "all"):
+        # Accelerate passes the tracker name as W&B's project argument.
+        tracker_name = args.wandb_project
         wandb_kwargs = {
-            "project": args.wandb_project,
             "mode": args.wandb_mode,
         }
         if args.wandb_entity:
@@ -221,7 +223,7 @@ def main(args):
         run_config["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     except Exception:
         pass
-    accelerator.init_trackers("XVLA-Training", config=run_config, init_kwargs=tracker_kwargs)
+    accelerator.init_trackers(tracker_name, config=run_config, init_kwargs=tracker_kwargs)
     
     accelerator.wait_for_everyone()
     logger = get_logger(__name__, output_dir=output_dir, accelerator=accelerator)
