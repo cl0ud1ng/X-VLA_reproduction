@@ -20,6 +20,8 @@ import time
 import json
 import random
 import argparse
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Dict
 
@@ -28,7 +30,7 @@ import torch
 import torch.backends.cudnn as cudnn
 from torch.optim import AdamW
 
-from accelerate import Accelerator
+from accelerate import Accelerator, DataLoaderConfiguration
 from datasets import create_dataloader
 from models.modeling_xvla import XVLA
 from models.processing_xvla import XVLAProcessor
@@ -78,6 +80,8 @@ def get_args_parser():
     # Data
     parser.add_argument("--train_metas_path", type=str, required=True, help="Path to training metadata")
     parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--sampler_mode", choices=("domain_balanced", "tempered_T2"), default="domain_balanced")
+    parser.add_argument("--num_workers", type=int, default=0)
 
     # Optimizer
     parser.add_argument("--learning_rate", type=float, default=1e-4)
@@ -99,6 +103,8 @@ def get_args_parser():
 
     # System
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--base_seed", type=int, default=0, help="Manifest sampler base seed")
+    parser.add_argument("--mixed_precision", choices=("no", "fp16", "bf16"), default="no")
 
     return parser
 
@@ -126,7 +132,7 @@ def build_optimizer(model: XVLA, lr: float, weight_decay: float, betas=(0.9, 0.9
         {"name": "soft_prompts", "params": soft_prompt_params, "lr": lr * lr_coef_soft, "weight_decay": weight_decay},
         {"name": "action_heads", "params": action_params, "lr": lr, "weight_decay": weight_decay},
     ]
-    return AdamW(param_groups, betas=betas)
+    return AdamW(param_groups, betas=betas, foreach=False)
 
 
 def set_group_lr(optim: torch.optim.Optimizer, name: str, lr: float):
@@ -178,6 +184,8 @@ def update_group_lrs(optim, step, args):
 def main(args):
     output_dir = Path(args.output_dir)
     accelerator = Accelerator(
+        mixed_precision=None if args.mixed_precision == "no" else args.mixed_precision,
+        dataloader_config=DataLoaderConfiguration(split_batches=True, even_batches=True),
         log_with="tensorboard", 
         project_dir=output_dir
     )
@@ -188,21 +196,32 @@ def main(args):
     
     set_seed(args.seed + accelerator.process_index)
     logger.info(f"Args: {args}")
+    try:
+        git_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except Exception:
+        git_commit = "unknown"
 
-    # Load model & processor
+    # Load model & processor and fail early on the frozen RoboTwin contract.
     model = XVLA.from_pretrained(args.models)
     processor = XVLAProcessor.from_pretrained(args.models)
+    if model.action_mode != "ee6d" or model.num_actions != 30 or not model.use_proprio:
+        raise ValueError("RoboTwin training requires action_mode=ee6d, num_actions=30, use_proprio=True")
+    if getattr(model.config, "num_domains", 0) < 3 or model.action_space.dim_action != 20:
+        raise ValueError("RoboTwin training requires at least three domains and 20-D EE6D actions")
 
-    # Iterable dataloader (don't wrap with prepare)
     train_dataloader = create_dataloader(
         batch_size=args.batch_size,
         metas_path=args.train_metas_path,
         num_actions=model.num_actions,
         action_mode=model.action_mode,
         training=True,
+        sampler_mode=args.sampler_mode,
+        num_workers=args.num_workers,
+        base_seed=args.base_seed,
     )
 
-    # Optimizer
+    # Optimizer. Frozen-stage groups stay at LR=0 and are opened by the
+    # schedule; DDP must keep them registered for the later unfreeze boundary.
     optim = build_optimizer(
         model=model,
         lr=args.learning_rate,
@@ -210,7 +229,7 @@ def main(args):
         betas=tuple(args.betas),
         lr_coef_soft=args.learning_coef,
     )
-    model, optim = accelerator.prepare(model, optim)
+    model, optim, train_dataloader = accelerator.prepare(model, optim, train_dataloader)
 
     # Training loop
     model.train()
@@ -219,16 +238,29 @@ def main(args):
     
     for batch in train_dataloader:
         # Encode language
-        lang = processor.encode_language(batch["language_instruction"])
+        language_values = batch["language_instruction"]
+        if isinstance(language_values, torch.Tensor):
+            language_values = [bytes(row.tolist()).split(b"\0", 1)[0].decode("utf-8") for row in language_values]
+        lang = processor.encode_language(language_values)
+        # Metadata is retained for audit logging but is not a model input.
+        task_values = batch.get("task_id", [])
         batch.pop("language_instruction", None)
+        for metadata_key in ("task_id", "terminal_hold", "window_key"):
+            batch.pop(metadata_key, None)
         inputs = {**batch, **lang}
-        inputs = {k: v.cuda(non_blocking=True) for k, v in inputs.items()}
-        # Update LR per group
+        moved = {}
+        for key, value in inputs.items():
+            if not isinstance(value, torch.Tensor):
+                continue
+            moved[key] = value.to(accelerator.device, non_blocking=True)
+        inputs = moved
+        # Update LR per group; VLM/core stay at zero through freeze_steps.
         update_group_lrs(optim, global_step, args)
 
         # Forward & backward
-        loss_dict: Dict[str, torch.Tensor] = model(**inputs)
-        loss = sum(loss_dict.values())
+        with accelerator.autocast():
+            loss_dict: Dict[str, torch.Tensor] = model(**inputs)
+            loss = sum(loss_dict.values())
         accelerator.backward(loss)
         if args.max_grad_norm:
             accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
@@ -238,6 +270,19 @@ def main(args):
         # Logging
         if global_step % args.log_interval == 0:
             logs = {k: v.detach().float().item() for k, v in loss_dict.items()}
+            # Stable metric names are part of the Stage-C acceptance contract.
+            logs["loss_position"] = logs.get("position_loss", logs.get("loss_position", 0.0))
+            logs["loss_rotate6D"] = logs.get("rotate6D_loss", logs.get("loss_rotate6D", 0.0))
+            logs["loss_gripper"] = logs.get("gripper_loss", logs.get("loss_gripper", 0.0))
+            gathered_domains = accelerator.gather(batch["domain_id"].detach())
+            domain_counts = torch.bincount(gathered_domains.cpu(), minlength=3)
+            for domain_id in range(3):
+                logs[f"domain_count[{domain_id}]"] = int(domain_counts[domain_id])
+            if isinstance(task_values, torch.Tensor):
+                gathered_tasks = accelerator.gather(task_values.detach())
+                task_counts = torch.bincount(gathered_tasks.cpu(), minlength=5)
+                for task_id in range(len(task_counts)):
+                    logs[f"task_count[{task_id}]"] = int(task_counts[task_id])
             logs["loss_total"] = float(loss.detach().item())
             logs.update({f"lr_{g['name']}": g["lr"] for g in optim.param_groups})
             accelerator.log(logs, step=global_step)
@@ -246,7 +291,7 @@ def main(args):
                 dt = (time.time() - t0) / args.log_interval
                 t0 = time.time()
                 cpu_mem = psutil.Process(os.getpid()).memory_info().rss / 1024**3
-                gpu_mem = torch.cuda.memory_allocated() / 1024**3
+                gpu_mem = torch.cuda.memory_allocated(accelerator.device) / 1024**3 if torch.cuda.is_available() else 0.0
                 logger.info(
                     f"[{global_step}/{args.iters}] "
                     f"loss={logs['loss_total']:.4f} "
@@ -265,7 +310,14 @@ def main(args):
                 accelerator.unwrap_model(model).save_pretrained(save_dir, safe_serialization=True)
                 processor.save_pretrained(save_dir)
                 with open(os.path.join(save_dir, "state.json"), "w") as f:
-                    json.dump({"global_step": global_step}, f)
+                    json.dump({"global_step": global_step, "sampler_mode": args.sampler_mode,
+                               "manifest": os.path.abspath(args.train_metas_path),
+                               "seed": args.seed, "git_commit": git_commit,
+                               "world_size": accelerator.num_processes,
+                               "global_batch_size": args.batch_size,
+                               "mixed_precision": args.mixed_precision,
+                               "command": " ".join(sys.argv)}, f, indent=2)
+                shutil.copy2(args.train_metas_path, os.path.join(save_dir, "total_manifest.json"))
         if global_step >= args.iters: break
 
     accelerator.end_training()

@@ -371,9 +371,9 @@ RoboTwin 的 `take_action(action_type='ee')` 接受 world-frame target pose；�
 
 ### 阶段 C：模型 smoke test
 
-- [ ] 用每个 domain 各 2 个样本完成 forward/backward 100 steps，无 shape、NaN、BCE target 或 device 错误。
-- [ ] 输出固定为 `[B,30,20]`；保存/重新加载 checkpoint 后 processor 和 domain embedding 均存在。
-- [ ] 训练日志包含 `loss_position、loss_rotate6D、loss_gripper、domain_count[0..2]、task_count` 和四组 learning rate。
+- [x] 用每个 domain 各 2 个样本完成 forward/backward 100 steps，无 shape、NaN、BCE target 或 device 错误。
+- [x] 输出固定为 `[B,30,20]`；保存/重新加载 checkpoint 后 processor 和 domain embedding 均存在。
+- [x] 训练日志包含 `loss_position、loss_rotate6D、loss_gripper、domain_count[0..2]、task_count` 和四组 learning rate。
 
 ### 阶段 D：最小 rollout
 

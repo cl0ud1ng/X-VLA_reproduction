@@ -135,7 +135,21 @@ class ManifestWindowDataset(IterableDataset):
 
     def _yield_entry(self, entry: dict):
         key = f"{int(entry['domain_id'])}::{entry['task']}"
-        return self._handlers[key].sample_from_entry(entry)
+        sample = self._handlers[key].sample_from_entry(entry)
+        # Accelerate/DataLoader require every collated field to expose a
+        # tensor batch dimension.  Keep task identity as a stable integer;
+        # the manifest task list is the human-readable lookup table.
+        sample["task_id"] = torch.tensor(self.total["tasks"].index(entry["task"]), dtype=torch.long)
+        # Encode language as a fixed-size uint8 tensor so Accelerate can shard
+        # the entire batch.  The training loop decodes it before tokenization.
+        instruction = str(sample.pop("language_instruction"))
+        encoded = instruction.encode("utf-8")
+        if len(encoded) > 255:
+            raise ValueError("RoboTwin instruction exceeds 255 UTF-8 bytes")
+        sample["language_instruction"] = torch.tensor(list(encoded) + [0] * (256 - len(encoded)), dtype=torch.uint8)
+        sample.pop("task", None)
+        sample.pop("window_key", None)
+        return sample
 
     def iter_finite(self):
         entries = []

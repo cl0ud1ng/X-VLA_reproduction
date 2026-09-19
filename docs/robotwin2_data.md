@@ -48,4 +48,6 @@ Stage A simulator preflight 已完成：固定 RoboTwin `96c1fea` 的代码通�
 
 阶段 B 的 transformed-sample 与 sampler preflight 已完成：`scripts/preflight_robotwin2_ft.py` 使用总 manifest 和真实 HDF5 图像/姿态解码，逐 pair 检查了 90 个样本（包含每个 pair 的 terminal-hold），全部满足 `[3,3,224,224]`、全 True mask、`[20]` proprio、`[30,20]` action、finite 和 `[0,1]` gripper；一个 6-sample batch 同时包含三个 domain（各 2 个）。domain-balanced 与 tempered(T=2) 各抽样 10,000 次，最大绝对误差分别为 `0.0055333` 和 `0.0045544`。结果写入被忽略的运行产物 `outputs/robotwin_ft/preflight_stage_b.json`。训练端通过 `datasets/domain_handler/robotwin2_ft.py` 和 `ManifestWindowDataset` 读取相同窗口索引。
 
+阶段 C 的 8×RTX 4090 training smoke 已完成：使用 Accelerate/DDP、global batch 8、fp16 和正式 `freeze_steps=1000` 的前 100-step 阶段（VLM/transformer core LR 为 0，仅更新 soft prompt/action head）。每个 domain 至少 2 个真实样本，100 个 forward/backward/update step 无 shape、NaN、BCE target 或 device 错误；总 loss 从 `254.5387` 降到 `234.6687`。推理输出为 `[8,30,20]`，保存后重新加载确认 processor 完整且 domain embedding 有 30 行。逐步日志和验收报告位于被忽略的 `outputs/robotwin_ft/stage_c_smoke/{metrics.jsonl,smoke_report.json,state.json}`。完成重载验证后已自动删除 3.3 GB smoke checkpoint，只保留约 36 KB 审计记录。正式 8 卡训练入口为 `scripts/run_robotwin2_training_8x4090.sh`。
+
 `configs/robotwin2_ft/base_poses.json` 记录了三个 domain 的 robot-base pose；ARX-X5 和双 Piper 使用 `[robot, robot, 0.60]` 的双臂任务语义。正式模型仿真 rollout 尚未开始；后续仍需在模型 client action base/world round-trip 和 receding-horizon 协议下执行阶段 D。
