@@ -46,4 +46,6 @@ unzip -q -o assets/embodiments.zip -d assets/robotwin
 
 Stage A simulator preflight 已完成：固定 RoboTwin `96c1fea` 的代码通过临时 overlay 运行，三种具身×五个任务共 15/15 通过 `setup_demo`、官方 clean archive 的 `episode0` seed 轨迹 replay、`play_once` 和 `check_success`。结果与日志见 [`outputs/robotwin_ft/preflight_stage_a/summary.json`](../outputs/robotwin_ft/preflight_stage_a/summary.json)；runner 为 [`scripts/robotwin2_sim_preflight.py`](../scripts/robotwin2_sim_preflight.py)。Aloha、ARX-X5、双 Piper 的观测相机均包含 `head_camera`、`left_camera`、`right_camera`，三者 arm dim 均为 `[6,6]`，control gripper dim 为 `[1,1]`。
 
+阶段 B 的 transformed-sample 与 sampler preflight 已完成：`scripts/preflight_robotwin2_ft.py` 使用总 manifest 和真实 HDF5 图像/姿态解码，逐 pair 检查了 90 个样本（包含每个 pair 的 terminal-hold），全部满足 `[3,3,224,224]`、全 True mask、`[20]` proprio、`[30,20]` action、finite 和 `[0,1]` gripper；一个 6-sample batch 同时包含三个 domain（各 2 个）。domain-balanced 与 tempered(T=2) 各抽样 10,000 次，最大绝对误差分别为 `0.0055333` 和 `0.0045544`。结果写入被忽略的运行产物 `outputs/robotwin_ft/preflight_stage_b.json`。训练端通过 `datasets/domain_handler/robotwin2_ft.py` 和 `ManifestWindowDataset` 读取相同窗口索引。
+
 `configs/robotwin2_ft/base_poses.json` 记录了三个 domain 的 robot-base pose；ARX-X5 和双 Piper 使用 `[robot, robot, 0.60]` 的双臂任务语义。正式模型仿真 rollout 尚未开始；后续仍需在模型 client action base/world round-trip 和 receding-horizon 协议下执行阶段 D。

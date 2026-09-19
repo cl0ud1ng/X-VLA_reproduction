@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 import random
 from abc import ABC, abstractmethod
 from typing import Iterable, Tuple, Optional, Sequence, Any
@@ -24,7 +25,13 @@ from typing import Iterable, Tuple, Optional, Sequence, Any
 import numpy as np
 import h5py
 import torch
-from mmengine import fileio
+try:
+    from mmengine import fileio
+except ImportError:  # keep the local HDF5 reader usable in minimal audit envs
+    class _LocalFileIO:
+        @staticmethod
+        def get(path): return Path(path).read_bytes()
+    fileio = _LocalFileIO()
 from PIL import Image
 from scipy.interpolate import interp1d
 

@@ -15,12 +15,23 @@
 # ------------------------------------------------------------------------------
 
 from __future__ import annotations
-import io, numpy as np, pyarrow.parquet as pq, av, cv2
-from mmengine import fileio
+import io, numpy as np, av, cv2
+try:  # Optional for the HDF5/RoboTwin path.
+    import pyarrow.parquet as pq
+except ImportError:  # pragma: no cover - exercised only in minimal envs
+    pq = None
+try:
+    from mmengine import fileio
+except ImportError:
+    class _LocalFileIO:
+        @staticmethod
+        def get(path): return Path(path).read_bytes()
+    fileio = _LocalFileIO()
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
 import h5py
 from typing import Sequence, Dict
+from pathlib import Path
 import torch
 
 def read_bytes(path: str) -> bytes:
@@ -39,6 +50,8 @@ def read_video_to_frames(path: str) -> np.ndarray:
     return np.stack(frames, axis=0)
 
 def read_parquet(path: str) -> dict:
+    if pq is None:
+        raise ImportError("read_parquet requires pyarrow; install the full X-VLA dependencies")
     buf = io.BytesIO(read_bytes(path))
     return pq.read_table(buf).to_pydict()
 
@@ -50,6 +63,41 @@ def decode_image_from_bytes(x) -> Image.Image:
         if rgb.size == 2764800: rgb = rgb.reshape(720, 1280, 3)
         elif rgb.size == 921600: rgb = rgb.reshape(480, 640, 3)
     return Image.fromarray(rgb)
+
+
+def decode_image_bit(image_bits):
+    """Decode RoboTwin/XPolicyLab encoded image bits to HWC uint8 RGB."""
+    def _single(value):
+        if isinstance(value, np.ndarray) and value.dtype.kind in {"S", "U"}:
+            value = value.item() if value.ndim == 0 else value.tobytes()
+        if isinstance(value, str):
+            value = value.encode("utf-8")
+        elif isinstance(value, memoryview):
+            value = value.tobytes()
+        if isinstance(value, (bytes, bytearray)):
+            value = value.rstrip(b"\0")
+        elif isinstance(value, np.ndarray):
+            value = np.ascontiguousarray(value)
+        bgr = cv2.imdecode(np.frombuffer(value, np.uint8), cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError(f"failed to decode RoboTwin image bits (type={type(value).__name__})")
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+    if isinstance(image_bits, (bytes, bytearray, memoryview, str)):
+        return _single(image_bits)
+    if isinstance(image_bits, np.ndarray):
+        if image_bits.dtype.kind in {"S", "U", "O"}:
+            if image_bits.ndim == 0:
+                return _single(image_bits.item())
+            return np.stack([_single(x) for x in image_bits], axis=0)
+        if image_bits.dtype == np.uint8 and image_bits.ndim == 1:
+            return _single(image_bits)
+        if image_bits.dtype == np.uint8 and image_bits.ndim == 2:
+            return np.stack([_single(x) for x in image_bits], axis=0)
+        return image_bits
+    if isinstance(image_bits, (list, tuple)):
+        return np.stack([decode_image_bit(x) for x in image_bits], axis=0)
+    return _single(image_bits)
 
 def quat_to_rotate6d(q: np.ndarray, scalar_first = False) -> np.ndarray:
     return R.from_quat(q, scalar_first = scalar_first).as_matrix()[..., :, :2].reshape(q.shape[:-1] + (6,))

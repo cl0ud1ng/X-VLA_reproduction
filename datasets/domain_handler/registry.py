@@ -27,6 +27,7 @@ from .real_world import AIRAgilexHandler, AIRAgilexHQHandler, AIRBotHandler, Wid
 from .simulations import BridgeHandler, LiberoHandler, VLABenchHandler, RobotWin2Handler, RobocasaHumanHandler, CalvinHandler, RT1Handler
 from .lerobotv21 import LeRobotV21Handler
 from .x2robot import X2RobotHandler
+from .robotwin2_ft import RobotWin2FTHandler
 
 # 1) Exact registry only (no heuristics)
 _REGISTRY: Dict[str, Type[DomainHandler]] = {
@@ -57,6 +58,9 @@ _REGISTRY: Dict[str, Type[DomainHandler]] = {
     "VLABench": VLABenchHandler,
     "robotwin2_abs_ee": RobotWin2Handler,
     "robotwin2_clean": RobotWin2Handler,
+    "robotwin2_ft_aloha": RobotWin2FTHandler,
+    "robotwin2_ft_arx_x5": RobotWin2FTHandler,
+    "robotwin2_ft_piper_dual": RobotWin2FTHandler,
     "robocasa-human": RobocasaHumanHandler,
 
     # Robomind
