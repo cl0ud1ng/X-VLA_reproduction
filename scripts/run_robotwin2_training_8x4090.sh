@@ -5,9 +5,9 @@ PROJECT_ROOT=/mnt/mnt/data/zxw/cross-embodiment_generalization/X-VLA_reproductio
 ACCELERATE=/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin/.venv/bin/accelerate
 SEED=${SEED:-0}
 PORT=${PORT:-29593}
-# Physical batch is 32 on each GPU: 8 GPUs -> global batch 256.  No
-# micro-batch or gradient accumulation is used.  LR=5e-5 is the conservative
-# sqrt(256/8) scaling of the previous 1e-5 setting.
+# Physical batch is 8 on each GPU: 8 GPUs -> global batch 64.  No
+# micro-batch or gradient accumulation is used.  LR=3e-5 is the conservative
+# sqrt(64/8) scaling of the previous 1e-5 setting.
 
 cd "$PROJECT_ROOT"
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$ACCELERATE" launch \
@@ -22,22 +22,26 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$ACCELERATE" launch \
   --train_metas_path outputs/robotwin_ft/manifests/official_clean_50/total.json \
   --output_dir "outputs/robotwin_ft/domain_balanced/seed${SEED}" \
   --sampler_mode domain_balanced \
-  --batch_size 32 \
-  --global_batch_size 256 \
+  --batch_size 8 \
+  --global_batch_size 64 \
   --gradient_accumulation_steps 1 \
   --num_workers 4 \
-  --learning_rate 5e-5 \
+  --learning_rate 3e-5 \
   --learning_coef 0.1 \
   --weight_decay 0.0 \
   --betas 0.9 0.95 \
-  --iters 15000 \
-  --freeze_steps 500 \
-  --warmup_steps 1000 \
+  --iters 30000 \
+  --freeze_steps 1000 \
+  --warmup_steps 2000 \
   --use_cosine_decay \
   --min_lr_ratio 0.1 \
   --max_grad_norm 1.0 \
-  --save_interval 7500 \
+  --save_interval 10000 \
   --log_interval 20 \
   --seed "$SEED" \
   --base_seed "$SEED" \
-  --mixed_precision fp16
+  --mixed_precision fp16 \
+  --report_to wandb \
+  --wandb_project xvla-robotwin2-ft \
+  --wandb_run_name "robotwin2-balanced-b64-s${SEED}" \
+  --wandb_mode online

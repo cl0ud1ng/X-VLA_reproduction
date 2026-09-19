@@ -289,16 +289,16 @@ action_space.dim_action == 20
 主结果使用 `train.py` 的 full fine-tuning 分组 optimizer，不使用 `peft_train.py` 作为主结果。建议的首个可复现实验配置如下；后续若修改，必须在 run manifest 中记录：
 
 ```text
-batch_size       = 32                        # per-GPU batch; 8×4090 => global batch 256
-global_batch     = 256
+batch_size       = 8                         # per-GPU batch; 8×4090 => global batch 64
+global_batch     = 64
 gradient_accumulation = 1                    # no micro-batch accumulation
-learning_rate    = 5e-5                      # conservative sqrt scaling from global batch 8
+learning_rate    = 3e-5                      # conservative sqrt scaling from global batch 8
 learning_coef    = 0.1                       # VLM/soft prompt 相对系数
 weight_decay     = 0.0
 betas            = (0.9, 0.95)
-iters            = 15000
-freeze_steps     = 500                       # 仅 soft prompt/action head 先训练
-warmup_steps     = 1000
+iters            = 30000
+freeze_steps     = 1000                      # 仅 soft prompt/action head 先训练
+warmup_steps     = 2000
 use_cosine_decay = true
 min_lr_ratio     = 0.1
 max_grad_norm    = 1.0
@@ -308,6 +308,8 @@ seed              = 0,1,2                    # 至少三次独立 seed
 `freeze_steps` 期间 VLM 和 transformer core 的学习率必须为 0；之后才按 schedule 打开。每个 checkpoint 保存 model、processor、`state.json`、总 manifest、git commit 和完整命令行。
 
 训练入口应使用 accelerator 的 `device` 移动 tensor，并对 dataloader 做正确的 worker/rank 划分；禁止直接写 `.cuda()` 或因为“iterable 不 prepare”而跳过分布式一致性。
+
+正式训练 launcher 使用 W&B（`--report_to wandb`）记录 run config、git/manifest provenance、loss 分项、总 loss、四组 learning rate、domain/task/terminal-hold 计数、gradient norm、step time 和资源使用情况。
 
 ### 6.3 可选 LoRA 对照
 

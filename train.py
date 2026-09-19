@@ -108,6 +108,11 @@ def get_args_parser():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--base_seed", type=int, default=0, help="Manifest sampler base seed")
     parser.add_argument("--mixed_precision", choices=("no", "fp16", "bf16"), default="no")
+    parser.add_argument("--report_to", choices=("none", "tensorboard", "wandb", "all"), default="tensorboard")
+    parser.add_argument("--wandb_project", type=str, default="xvla-robotwin2-ft")
+    parser.add_argument("--wandb_entity", type=str, default="")
+    parser.add_argument("--wandb_run_name", type=str, default="")
+    parser.add_argument("--wandb_mode", choices=("online", "offline", "disabled"), default="online")
 
     return parser
 
@@ -186,14 +191,37 @@ def update_group_lrs(optim, step, args):
 # ============================================================
 def main(args):
     output_dir = Path(args.output_dir)
+    if args.report_to == "none":
+        log_with = None
+    elif args.report_to == "all":
+        log_with = ["tensorboard", "wandb"]
+    else:
+        log_with = args.report_to
     accelerator = Accelerator(
         mixed_precision=None if args.mixed_precision == "no" else args.mixed_precision,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         dataloader_config=DataLoaderConfiguration(split_batches=False, even_batches=True),
-        log_with="tensorboard", 
+        log_with=log_with,
         project_dir=output_dir
     )
-    accelerator.init_trackers("XVLA-Training")
+    tracker_kwargs = {}
+    if args.report_to in ("wandb", "all"):
+        wandb_kwargs = {
+            "project": args.wandb_project,
+            "mode": args.wandb_mode,
+        }
+        if args.wandb_entity:
+            wandb_kwargs["entity"] = args.wandb_entity
+        if args.wandb_run_name:
+            wandb_kwargs["name"] = args.wandb_run_name
+        tracker_kwargs["wandb"] = wandb_kwargs
+    run_config = dict(vars(args))
+    run_config["git_commit"] = "unknown"
+    try:
+        run_config["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except Exception:
+        pass
+    accelerator.init_trackers("XVLA-Training", config=run_config, init_kwargs=tracker_kwargs)
     
     accelerator.wait_for_everyone()
     logger = get_logger(__name__, output_dir=output_dir, accelerator=accelerator)
@@ -248,6 +276,7 @@ def main(args):
                 f"per_device_batch={args.batch_size} global_batch={global_batch_size} "
                 f"gradient_accumulation={args.gradient_accumulation_steps}")
     optim.zero_grad(set_to_none=True)
+    last_step_time = time.time()
     
     for batch in train_dataloader:
         with accelerator.accumulate(model):
@@ -258,6 +287,7 @@ def main(args):
             lang = processor.encode_language(language_values)
             # Metadata is retained for audit logging but is not a model input.
             task_values = batch.get("task_id", [])
+            terminal_values = batch.get("terminal_hold", [])
             batch.pop("language_instruction", None)
             for metadata_key in ("task_id", "terminal_hold", "window_key"):
                 batch.pop(metadata_key, None)
@@ -280,8 +310,9 @@ def main(args):
             accelerator.backward(loss)
 
         if accelerator.sync_gradients:
+            grad_norm = torch.tensor(0.0, device=accelerator.device)
             if args.max_grad_norm:
-                accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                grad_norm = accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
             optim.step()
             optim.zero_grad(set_to_none=True)
             global_step += 1
@@ -302,7 +333,16 @@ def main(args):
                 task_counts = torch.bincount(gathered_tasks.cpu(), minlength=5)
                 for task_id in range(len(task_counts)):
                     logs[f"task_count[{task_id}]"] = int(task_counts[task_id])
+            if isinstance(terminal_values, torch.Tensor):
+                gathered_terminal = accelerator.gather(terminal_values.detach().to(torch.int64))
+                logs["terminal_hold_count"] = int(gathered_terminal.sum().item())
             logs["loss_total"] = float(loss.detach().item())
+            logs["grad_norm"] = float(grad_norm.detach().float().item())
+            logs["batch/per_device"] = args.batch_size
+            logs["batch/global"] = global_batch_size
+            logs["batch/gradient_accumulation"] = args.gradient_accumulation_steps
+            logs["step_time_sec"] = time.time() - last_step_time
+            last_step_time = time.time()
             logs.update({f"lr_{g['name']}": g["lr"] for g in optim.param_groups})
             accelerator.log(logs, step=global_step)
 
