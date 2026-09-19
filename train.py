@@ -79,7 +79,9 @@ def get_args_parser():
 
     # Data
     parser.add_argument("--train_metas_path", type=str, required=True, help="Path to training metadata")
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=16, help="Per-device batch size")
+    parser.add_argument("--global_batch_size", type=int, default=0, help="Expected global batch; 0 derives it")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--sampler_mode", choices=("domain_balanced", "tempered_T2"), default="domain_balanced")
     parser.add_argument("--num_workers", type=int, default=0)
 
@@ -100,6 +102,7 @@ def get_args_parser():
     # Logging / saving
     parser.add_argument("--save_interval", type=int, default=50000)
     parser.add_argument("--log_interval", type=int, default=20)
+    parser.add_argument("--disable_checkpoint", action="store_true")
 
     # System
     parser.add_argument("--seed", type=int, default=0)
@@ -185,7 +188,8 @@ def main(args):
     output_dir = Path(args.output_dir)
     accelerator = Accelerator(
         mixed_precision=None if args.mixed_precision == "no" else args.mixed_precision,
-        dataloader_config=DataLoaderConfiguration(split_batches=True, even_batches=True),
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        dataloader_config=DataLoaderConfiguration(split_batches=False, even_batches=True),
         log_with="tensorboard", 
         project_dir=output_dir
     )
@@ -208,6 +212,12 @@ def main(args):
         raise ValueError("RoboTwin training requires action_mode=ee6d, num_actions=30, use_proprio=True")
     if getattr(model.config, "num_domains", 0) < 3 or model.action_space.dim_action != 20:
         raise ValueError("RoboTwin training requires at least three domains and 20-D EE6D actions")
+    if args.batch_size < 1 or args.gradient_accumulation_steps < 1:
+        raise ValueError("batch_size and gradient_accumulation_steps must be positive")
+    global_batch_size = args.batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    if args.global_batch_size and args.global_batch_size != global_batch_size:
+        raise ValueError(f"global_batch_size={args.global_batch_size} != per_device batch {args.batch_size} * "
+                         f"world_size {accelerator.num_processes} * accumulation {args.gradient_accumulation_steps}")
 
     train_dataloader = create_dataloader(
         batch_size=args.batch_size,
@@ -234,41 +244,50 @@ def main(args):
     # Training loop
     model.train()
     global_step, t0 = 0, time.time()
-    logger.info(f"🚀 Start training for {args.iters} iterations | world_size={accelerator.num_processes}")
+    logger.info(f"🚀 Start training for {args.iters} optimizer steps | world_size={accelerator.num_processes} | "
+                f"per_device_batch={args.batch_size} global_batch={global_batch_size} "
+                f"gradient_accumulation={args.gradient_accumulation_steps}")
+    optim.zero_grad(set_to_none=True)
     
     for batch in train_dataloader:
-        # Encode language
-        language_values = batch["language_instruction"]
-        if isinstance(language_values, torch.Tensor):
-            language_values = [bytes(row.tolist()).split(b"\0", 1)[0].decode("utf-8") for row in language_values]
-        lang = processor.encode_language(language_values)
-        # Metadata is retained for audit logging but is not a model input.
-        task_values = batch.get("task_id", [])
-        batch.pop("language_instruction", None)
-        for metadata_key in ("task_id", "terminal_hold", "window_key"):
-            batch.pop(metadata_key, None)
-        inputs = {**batch, **lang}
-        moved = {}
-        for key, value in inputs.items():
-            if not isinstance(value, torch.Tensor):
-                continue
-            moved[key] = value.to(accelerator.device, non_blocking=True)
-        inputs = moved
-        # Update LR per group; VLM/core stay at zero through freeze_steps.
-        update_group_lrs(optim, global_step, args)
+        with accelerator.accumulate(model):
+            # Encode language
+            language_values = batch["language_instruction"]
+            if isinstance(language_values, torch.Tensor):
+                language_values = [bytes(row.tolist()).split(b"\0", 1)[0].decode("utf-8") for row in language_values]
+            lang = processor.encode_language(language_values)
+            # Metadata is retained for audit logging but is not a model input.
+            task_values = batch.get("task_id", [])
+            batch.pop("language_instruction", None)
+            for metadata_key in ("task_id", "terminal_hold", "window_key"):
+                batch.pop(metadata_key, None)
+            inputs = {**batch, **lang}
+            moved = {}
+            for key, value in inputs.items():
+                if not isinstance(value, torch.Tensor):
+                    continue
+                moved[key] = value.to(accelerator.device, non_blocking=True)
+            inputs = moved
+            # Update LR per group; VLM/core stay at zero through freeze_steps.
+            update_group_lrs(optim, global_step, args)
 
-        # Forward & backward
-        with accelerator.autocast():
-            loss_dict: Dict[str, torch.Tensor] = model(**inputs)
-            loss = sum(loss_dict.values())
-        accelerator.backward(loss)
-        if args.max_grad_norm:
-            accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-        optim.step()
-        optim.zero_grad()
+            # Forward & backward. Accelerator scales the loss across the
+            # configured accumulation window and suppresses intermediate DDP
+            # all-reduces.
+            with accelerator.autocast():
+                loss_dict: Dict[str, torch.Tensor] = model(**inputs)
+                loss = sum(loss_dict.values())
+            accelerator.backward(loss)
 
-        # Logging
-        if global_step % args.log_interval == 0:
+        if accelerator.sync_gradients:
+            if args.max_grad_norm:
+                accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+            optim.step()
+            optim.zero_grad(set_to_none=True)
+            global_step += 1
+
+        # Logging only at optimizer-step boundaries.
+        if accelerator.sync_gradients and global_step % args.log_interval == 0:
             logs = {k: v.detach().float().item() for k, v in loss_dict.items()}
             # Stable metric names are part of the Stage-C acceptance contract.
             logs["loss_position"] = logs.get("position_loss", logs.get("loss_position", 0.0))
@@ -302,9 +321,8 @@ def main(args):
                 )
         
         # Checkpointing
-        global_step += 1
-        if accelerator.is_main_process:
-            if global_step == args.iters or global_step % args.save_interval == 0:
+        if accelerator.sync_gradients and accelerator.is_main_process:
+            if not args.disable_checkpoint and (global_step == args.iters or global_step % args.save_interval == 0):
                 save_dir = os.path.join(output_dir, f"ckpt-{global_step}")
                 accelerator.print(f"💾 Saving model to {save_dir}")
                 accelerator.unwrap_model(model).save_pretrained(save_dir, safe_serialization=True)
@@ -314,11 +332,14 @@ def main(args):
                                "manifest": os.path.abspath(args.train_metas_path),
                                "seed": args.seed, "git_commit": git_commit,
                                "world_size": accelerator.num_processes,
-                               "global_batch_size": args.batch_size,
+                               "per_device_batch_size": args.batch_size,
+                               "global_batch_size": global_batch_size,
+                               "gradient_accumulation_steps": args.gradient_accumulation_steps,
                                "mixed_precision": args.mixed_precision,
                                "command": " ".join(sys.argv)}, f, indent=2)
                 shutil.copy2(args.train_metas_path, os.path.join(save_dir, "total_manifest.json"))
-        if global_step >= args.iters: break
+        if global_step >= args.iters:
+            break
 
     accelerator.end_training()
 

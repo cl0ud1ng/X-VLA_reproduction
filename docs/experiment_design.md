@@ -289,14 +289,16 @@ action_space.dim_action == 20
 主结果使用 `train.py` 的 full fine-tuning 分组 optimizer，不使用 `peft_train.py` 作为主结果。建议的首个可复现实验配置如下；后续若修改，必须在 run manifest 中记录：
 
 ```text
-batch_size       = 8                         # 显存允许时按 GPU 调整，但记录 global batch
-learning_rate    = 1e-5
+batch_size       = 32                        # per-GPU batch; 8×4090 => global batch 256
+global_batch     = 256
+gradient_accumulation = 1                    # no micro-batch accumulation
+learning_rate    = 5e-5                      # conservative sqrt scaling from global batch 8
 learning_coef    = 0.1                       # VLM/soft prompt 相对系数
 weight_decay     = 0.0
 betas            = (0.9, 0.95)
-iters            = 30000
-freeze_steps     = 1000                      # 仅 soft prompt/action head 先训练
-warmup_steps     = 2000
+iters            = 15000
+freeze_steps     = 500                       # 仅 soft prompt/action head 先训练
+warmup_steps     = 1000
 use_cosine_decay = true
 min_lr_ratio     = 0.1
 max_grad_norm    = 1.0
