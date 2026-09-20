@@ -80,7 +80,7 @@ CUDA_HOME=/path/to/cuda-12.1 bash scripts/bootstrap_robotwin2.sh --with-rollout
 训练脚本默认使用项目内的 `.venv`，不读取其他机器的环境：
 
 ```bash
-bash scripts/run_robotwin2_training_8x4090.sh
+bash scripts/run_robotwin2_training_8GPU.sh
 ```
 
 训练数据来自项目内的 normalized HDF5 和 manifest。manifest 使用仓库相对路径，因此项目根目录可以位于不同机器的不同绝对路径。
@@ -95,7 +95,7 @@ bash scripts/run_robotwin2_training_8x4090.sh
 
 ```bash
 .venv/bin/python scripts/preflight_robotwin2_ft.py
-bash scripts/run_robotwin2_fsdp_batch256_smoke_8x4090.sh
+bash scripts/run_robotwin2_fsdp_batch256_smoke_8GPU.sh
 # 当前训练脚本默认上报 W&B，首次在线训练前登录
 .venv/bin/wandb login
 ```
