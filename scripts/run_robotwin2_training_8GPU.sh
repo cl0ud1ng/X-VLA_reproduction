@@ -9,6 +9,7 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 SEED=${SEED:-0}
 PORT=${PORT:-29593}
+WANDB_MODE_VALUE=${WANDB_MODE_VALUE:-online}
 # FSDP full fine-tuning uses a physical per-GPU batch of 32 with no gradient
 # accumulation: 8 GPUs * 32 samples = global batch 256. FSDP activation
 # checkpointing and full parameter/gradient/optimizer sharding are enabled;
@@ -53,4 +54,4 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$PYTHON" -m accelerate.commands.launch \
   --report_to wandb \
   --wandb_project xvla-robotwin2-ft \
   --wandb_run_name "robotwin2-fsdp-fullft-b256-s${SEED}" \
-  --wandb_mode online
+  --wandb_mode "$WANDB_MODE_VALUE"

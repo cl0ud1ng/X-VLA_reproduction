@@ -221,9 +221,10 @@ def build_fsdp_plugin(args):
         "limit_all_gathers": True,
         "activation_checkpointing": args.fsdp_activation_checkpointing,
     }
-    if args.mixed_precision != "no":
-        # Accelerate maps this string to torch.distributed.fsdp.MixedPrecision.
-        wrap_kwargs["mixed_precision_policy"] = args.mixed_precision
+    # Accelerate converts the top-level ``mixed_precision`` argument into a
+    # torch.distributed.fsdp.MixedPrecision policy via ``set_mixed_precision``.
+    # Passing the raw CLI string here is invalid with Accelerate >=1.2 and
+    # reaches FSDP as ``mixed_precision="fp16"``.
     if args.fsdp_auto_wrap_policy == "size_based_wrap":
         wrap_kwargs["min_num_params"] = args.fsdp_min_num_params
     elif args.fsdp_auto_wrap_policy == "transformer_based_wrap":
