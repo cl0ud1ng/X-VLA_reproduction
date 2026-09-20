@@ -30,7 +30,12 @@ import torch
 import torch.backends.cudnn as cudnn
 from torch.optim import AdamW
 
-from accelerate import Accelerator, DataLoaderConfiguration
+from accelerate import (
+    Accelerator,
+    DataLoaderConfiguration,
+    FullyShardedDataParallelPlugin,
+)
+from accelerate.utils import GradientAccumulationPlugin
 from datasets import create_dataloader
 from models.modeling_xvla import XVLA
 from models.processing_xvla import XVLAProcessor
@@ -79,7 +84,7 @@ def get_args_parser():
 
     # Data
     parser.add_argument("--train_metas_path", type=str, required=True, help="Path to training metadata")
-    parser.add_argument("--batch_size", type=int, default=16, help="Per-device batch size")
+    parser.add_argument("--batch_size", type=int, default=8, help="Physical per-device batch size")
     parser.add_argument("--global_batch_size", type=int, default=0, help="Expected global batch; 0 derives it")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--sampler_mode", choices=("domain_balanced", "tempered_T2"), default="domain_balanced")
@@ -94,7 +99,10 @@ def get_args_parser():
 
     # Schedule
     parser.add_argument("--iters", type=int, default=1000000)
-    parser.add_argument("--freeze_steps", type=int, default=1000)
+    parser.add_argument("--finetune_mode", choices=("full", "staged"), default="full",
+                        help="Full fine-tuning updates every parameter; staged preserves the legacy warm-up.")
+    parser.add_argument("--freeze_steps", type=int, default=0,
+                        help="Staged-mode warm-up steps. Must be zero for full fine-tuning.")
     parser.add_argument("--warmup_steps", type=int, default=2000)
     parser.add_argument("--use_cosine_decay", action="store_true", default=False)
     parser.add_argument("--min_lr_ratio", type=float, default=0.1)
@@ -103,11 +111,21 @@ def get_args_parser():
     parser.add_argument("--save_interval", type=int, default=50000)
     parser.add_argument("--log_interval", type=int, default=20)
     parser.add_argument("--disable_checkpoint", action="store_true")
+    parser.add_argument("--run_report_path", type=str, default="",
+                        help="Optional JSON summary path for smoke/feasibility runs.")
 
     # System
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--base_seed", type=int, default=0, help="Manifest sampler base seed")
     parser.add_argument("--mixed_precision", choices=("no", "fp16", "bf16"), default="no")
+    parser.add_argument("--distributed_backend", choices=("fsdp", "ddp"), default="fsdp",
+                        help="Distributed optimizer/sharding backend. FSDP is the default for full FT.")
+    parser.add_argument("--fsdp_auto_wrap_policy", choices=("transformer_based_wrap", "size_based_wrap", "no_wrap"),
+                        default="transformer_based_wrap")
+    parser.add_argument("--fsdp_min_num_params", type=int, default=5_000_000,
+                        help="Minimum module size when --fsdp_auto_wrap_policy=size_based_wrap.")
+    parser.add_argument("--fsdp_activation_checkpointing", action="store_true",
+                        help="Checkpoint FSDP-wrapped transformer blocks to reduce activation memory.")
     parser.add_argument("--report_to", choices=("none", "tensorboard", "wandb", "all"), default="tensorboard")
     parser.add_argument("--wandb_project", type=str, default="xvla-robotwin2-ft")
     parser.add_argument("--wandb_entity", type=str, default="")
@@ -175,7 +193,7 @@ def update_group_lrs(optim, step, args):
     }
     def schedule(step, base_lr):
         return linear_warmup_cosine(step, args.freeze_steps, args.warmup_steps, args.iters, base_lr, args.min_lr_ratio)
-    if step < args.freeze_steps:
+    if args.finetune_mode == "staged" and step < args.freeze_steps:
         set_group_lr(optim, "vlm", 0.0)
         set_group_lr(optim, "transformer_core", 0.0)
         set_group_lr(optim, "soft_prompts", base["soft_prompts"])
@@ -184,6 +202,55 @@ def update_group_lrs(optim, step, args):
         for name, base_lr in base.items():
             new_lr = schedule(step, base_lr) if args.use_cosine_decay else base_lr
             set_group_lr(optim, name, new_lr)
+
+
+def build_fsdp_plugin(args):
+    """Build the explicit FSDP1 policy used by the training launcher.
+
+    ``use_orig_params=True`` is important here: the optimizer has separate
+    learning-rate groups for the VLM, transformer core, soft prompts, and
+    action heads.  FSDP can still shard those parameters while retaining the
+    original parameter handles for the optimizer.
+    """
+    if args.distributed_backend != "fsdp":
+        return None
+    wrap_kwargs = {
+        "auto_wrap_policy": args.fsdp_auto_wrap_policy,
+        "use_orig_params": True,
+        "state_dict_type": "FULL_STATE_DICT",
+        "limit_all_gathers": True,
+        "activation_checkpointing": args.fsdp_activation_checkpointing,
+    }
+    if args.mixed_precision != "no":
+        # Accelerate maps this string to torch.distributed.fsdp.MixedPrecision.
+        wrap_kwargs["mixed_precision_policy"] = args.mixed_precision
+    if args.fsdp_auto_wrap_policy == "size_based_wrap":
+        wrap_kwargs["min_num_params"] = args.fsdp_min_num_params
+    elif args.fsdp_auto_wrap_policy == "transformer_based_wrap":
+        # These classes cover the Florence language encoder, DaViT stages and
+        # X-VLA temporal blocks without wrapping every small Linear/LayerNorm.
+        wrap_kwargs["transformer_cls_names_to_wrap"] = [
+            "Florence2EncoderLayer",
+            "TransformerBlock",
+            "SpatialBlock",
+            "ChannelBlock",
+        ]
+    return FullyShardedDataParallelPlugin(**wrap_kwargs)
+
+
+def configure_finetuning(model: XVLA, args):
+    """Set parameter trainability before constructing the optimizer."""
+    if args.finetune_mode == "full":
+        if args.freeze_steps:
+            raise ValueError("--freeze_steps must be 0 when --finetune_mode=full")
+        for parameter in model.parameters():
+            parameter.requires_grad_(True)
+        return
+
+    # Legacy staged schedule: all parameters stay registered in the optimizer
+    # so they can be opened at the boundary, but their LR is zero initially.
+    for parameter in model.parameters():
+        parameter.requires_grad_(True)
 
 
 # ============================================================
@@ -197,12 +264,20 @@ def main(args):
         log_with = ["tensorboard", "wandb"]
     else:
         log_with = args.report_to
+    fsdp_plugin = build_fsdp_plugin(args)
+    accumulation_plugin = GradientAccumulationPlugin(
+        num_steps=args.gradient_accumulation_steps,
+        # FSDP no_sync keeps full, unsharded gradients. Synchronizing every
+        # micro-step preserves sharded gradients on 24 GB cards.
+        sync_each_batch=args.distributed_backend == "fsdp",
+    )
     accelerator = Accelerator(
         mixed_precision=None if args.mixed_precision == "no" else args.mixed_precision,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        gradient_accumulation_plugin=accumulation_plugin,
         dataloader_config=DataLoaderConfiguration(split_batches=False, even_batches=True),
         log_with=log_with,
-        project_dir=output_dir
+        project_dir=output_dir,
+        fsdp_plugin=fsdp_plugin,
     )
     tracker_kwargs = {}
     tracker_name = "XVLA-Training"
@@ -244,6 +319,8 @@ def main(args):
         raise ValueError("RoboTwin training requires at least three domains and 20-D EE6D actions")
     if args.batch_size < 1 or args.gradient_accumulation_steps < 1:
         raise ValueError("batch_size and gradient_accumulation_steps must be positive")
+    if args.distributed_backend == "fsdp" and accelerator.distributed_type.value != "FSDP":
+        raise RuntimeError(f"FSDP requested but Accelerate selected {accelerator.distributed_type}")
     global_batch_size = args.batch_size * accelerator.num_processes * args.gradient_accumulation_steps
     if args.global_batch_size and args.global_batch_size != global_batch_size:
         raise ValueError(f"global_batch_size={args.global_batch_size} != per_device batch {args.batch_size} * "
@@ -260,8 +337,14 @@ def main(args):
         base_seed=args.base_seed,
     )
 
-    # Optimizer. Frozen-stage groups stay at LR=0 and are opened by the
-    # schedule; DDP must keep them registered for the later unfreeze boundary.
+    configure_finetuning(model, args)
+    parameter_count = sum(parameter.numel() for parameter in model.parameters())
+    trainable_parameter_count = sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
+    if args.finetune_mode == "full" and trainable_parameter_count != parameter_count:
+        raise AssertionError("full fine-tuning requires every model parameter to be trainable")
+
+    # Optimizer is constructed before accelerator.prepare: FSDP needs the
+    # original parameter handles in order to shard them and preserve groups.
     optim = build_optimizer(
         model=model,
         lr=args.learning_rate,
@@ -270,13 +353,18 @@ def main(args):
         lr_coef_soft=args.learning_coef,
     )
     model, optim, train_dataloader = accelerator.prepare(model, optim, train_dataloader)
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats(accelerator.device)
 
     # Training loop
     model.train()
-    global_step, t0 = 0, time.time()
+    training_started_at = time.time()
+    global_step, t0 = 0, training_started_at
     logger.info(f"🚀 Start training for {args.iters} optimizer steps | world_size={accelerator.num_processes} | "
                 f"per_device_batch={args.batch_size} global_batch={global_batch_size} "
-                f"gradient_accumulation={args.gradient_accumulation_steps}")
+                f"gradient_accumulation={args.gradient_accumulation_steps} "
+                f"backend={args.distributed_backend} finetune={args.finetune_mode} "
+                f"trainable_params={trainable_parameter_count:,}/{parameter_count:,}")
     optim.zero_grad(set_to_none=True)
     last_step_time = time.time()
     
@@ -300,12 +388,13 @@ def main(args):
                     continue
                 moved[key] = value.to(accelerator.device, non_blocking=True)
             inputs = moved
-            # Update LR per group; VLM/core stay at zero through freeze_steps.
+            # Full mode updates every group from step zero; staged mode keeps
+            # VLM/core at zero through freeze_steps.
             update_group_lrs(optim, global_step, args)
 
             # Forward & backward. Accelerator scales the loss across the
-            # configured accumulation window and suppresses intermediate DDP
-            # all-reduces.
+            # configured accumulation window. FSDP keeps gradients sharded
+            # during accumulation by synchronizing each micro-step.
             with accelerator.autocast():
                 loss_dict: Dict[str, torch.Tensor] = model(**inputs)
                 loss = sum(loss_dict.values())
@@ -343,6 +432,18 @@ def main(args):
             logs["batch/per_device"] = args.batch_size
             logs["batch/global"] = global_batch_size
             logs["batch/gradient_accumulation"] = args.gradient_accumulation_steps
+            if torch.cuda.is_available():
+                local_peak = torch.tensor(
+                    [
+                        torch.cuda.max_memory_allocated(accelerator.device),
+                        torch.cuda.max_memory_reserved(accelerator.device),
+                    ],
+                    device=accelerator.device,
+                    dtype=torch.float64,
+                )
+                global_peaks = accelerator.gather(local_peak).reshape(-1, 2).max(dim=0).values
+                logs["gpu/peak_allocated_gb"] = float(global_peaks[0].item() / 1024**3)
+                logs["gpu/peak_reserved_gb"] = float(global_peaks[1].item() / 1024**3)
             logs["step_time_sec"] = time.time() - last_step_time
             last_step_time = time.time()
             logs.update({f"lr_{g['name']}": g["lr"] for g in optim.param_groups})
@@ -363,11 +464,18 @@ def main(args):
                 )
         
         # Checkpointing
-        if accelerator.sync_gradients and accelerator.is_main_process:
-            if not args.disable_checkpoint and (global_step == args.iters or global_step % args.save_interval == 0):
+        if accelerator.sync_gradients and not args.disable_checkpoint and (global_step == args.iters or global_step % args.save_interval == 0):
+            # FSDP full-state collection is collective; every rank must enter
+            # get_state_dict, while only rank 0 writes the HF checkpoint.
+            state_dict = accelerator.get_state_dict(model) if args.distributed_backend == "fsdp" else None
+            if accelerator.is_main_process:
                 save_dir = os.path.join(output_dir, f"ckpt-{global_step}")
                 accelerator.print(f"💾 Saving model to {save_dir}")
-                accelerator.unwrap_model(model).save_pretrained(save_dir, safe_serialization=True)
+                unwrapped = accelerator.unwrap_model(model)
+                if state_dict is None:
+                    unwrapped.save_pretrained(save_dir, safe_serialization=True)
+                else:
+                    unwrapped.save_pretrained(save_dir, state_dict=state_dict, safe_serialization=True)
                 processor.save_pretrained(save_dir)
                 with open(os.path.join(save_dir, "state.json"), "w") as f:
                     json.dump({"global_step": global_step, "sampler_mode": args.sampler_mode,
@@ -377,12 +485,54 @@ def main(args):
                                "per_device_batch_size": args.batch_size,
                                "global_batch_size": global_batch_size,
                                "gradient_accumulation_steps": args.gradient_accumulation_steps,
+                               "distributed_backend": args.distributed_backend,
+                               "finetune_mode": args.finetune_mode,
+                               "fsdp_auto_wrap_policy": args.fsdp_auto_wrap_policy,
+                               "fsdp_activation_checkpointing": args.fsdp_activation_checkpointing,
                                "mixed_precision": args.mixed_precision,
                                "command": " ".join(sys.argv)}, f, indent=2)
                 shutil.copy2(args.train_metas_path, os.path.join(save_dir, "total_manifest.json"))
         if global_step >= args.iters:
             break
 
+    peak_allocated_gb = peak_reserved_gb = 0.0
+    if torch.cuda.is_available():
+        local_peak = torch.tensor(
+            [
+                torch.cuda.max_memory_allocated(accelerator.device),
+                torch.cuda.max_memory_reserved(accelerator.device),
+            ],
+            device=accelerator.device,
+            dtype=torch.float64,
+        )
+        global_peaks = accelerator.gather(local_peak).reshape(-1, 2).max(dim=0).values
+        peak_allocated_gb = float(global_peaks[0].item() / 1024**3)
+        peak_reserved_gb = float(global_peaks[1].item() / 1024**3)
+    if args.run_report_path and accelerator.is_main_process:
+        report_path = Path(args.run_report_path)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps({
+            "status": "pass",
+            "optimizer_steps": global_step,
+            "elapsed_sec": time.time() - training_started_at,
+            "distributed_backend": args.distributed_backend,
+            "finetune_mode": args.finetune_mode,
+            "world_size": accelerator.num_processes,
+            "per_device_batch_size": args.batch_size,
+            "gradient_accumulation_steps": args.gradient_accumulation_steps,
+            "global_batch_size": global_batch_size,
+            "mixed_precision": args.mixed_precision,
+            "fsdp_auto_wrap_policy": args.fsdp_auto_wrap_policy,
+            "fsdp_activation_checkpointing": args.fsdp_activation_checkpointing,
+            "parameter_count": parameter_count,
+            "trainable_parameter_count": trainable_parameter_count,
+            "peak_allocated_gb": peak_allocated_gb,
+            "peak_reserved_gb": peak_reserved_gb,
+            "git_commit": git_commit,
+            "manifest": os.path.abspath(args.train_metas_path),
+            "seed": args.seed,
+            "command": " ".join(sys.argv),
+        }, indent=2) + "\n", encoding="utf-8")
     accelerator.end_training()
 
 # ============================================================

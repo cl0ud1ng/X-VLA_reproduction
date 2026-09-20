@@ -227,3 +227,5 @@ assets/robotwin/
 data/raw/
 data/processed/
 outputs/robotwin_ft/
+# W&B logs and artifacts
+wandb/

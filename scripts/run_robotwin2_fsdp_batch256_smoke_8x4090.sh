@@ -3,12 +3,8 @@ set -euo pipefail
 
 PROJECT_ROOT=/mnt/mnt/data/zxw/cross-embodiment_generalization/X-VLA_reproduction
 ACCELERATE=/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin/.venv/bin/accelerate
-SEED=${SEED:-0}
-PORT=${PORT:-29593}
-# FSDP full fine-tuning uses a physical per-GPU batch of 32 with no gradient
-# accumulation: 8 GPUs * 32 samples = global batch 256. FSDP activation
-# checkpointing and full parameter/gradient/optimizer sharding are enabled;
-# the feasibility smoke below must be run before a long training job.
+OUTPUT_DIR="$PROJECT_ROOT/outputs/robotwin_ft/fsdp_fullft_batch256_smoke"
+PORT=${PORT:-29594}
 
 cd "$PROJECT_ROOT"
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$ACCELERATE" launch \
@@ -21,32 +17,28 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$ACCELERATE" launch \
   train.py \
   --models models/X-VLA-Pt \
   --train_metas_path outputs/robotwin_ft/manifests/official_clean_50/total.json \
-  --output_dir "outputs/robotwin_ft/domain_balanced/seed${SEED}" \
+  --output_dir "$OUTPUT_DIR" \
   --sampler_mode domain_balanced \
   --batch_size 32 \
   --global_batch_size 256 \
   --gradient_accumulation_steps 1 \
-  --num_workers 4 \
-  --learning_rate 5e-5 \
+  --num_workers 0 \
+  --learning_rate 1e-5 \
   --learning_coef 0.1 \
   --weight_decay 0.0 \
   --betas 0.9 0.95 \
-  --iters 15000 \
+  --iters 2 \
   --finetune_mode full \
   --freeze_steps 0 \
-  --warmup_steps 1000 \
-  --use_cosine_decay \
-  --min_lr_ratio 0.1 \
+  --warmup_steps 0 \
   --max_grad_norm 1.0 \
-  --save_interval 7500 \
-  --log_interval 20 \
-  --seed "$SEED" \
-  --base_seed "$SEED" \
+  --log_interval 1 \
+  --seed 0 \
+  --base_seed 0 \
   --mixed_precision fp16 \
   --distributed_backend fsdp \
   --fsdp_auto_wrap_policy transformer_based_wrap \
   --fsdp_activation_checkpointing \
-  --report_to wandb \
-  --wandb_project xvla-robotwin2-ft \
-  --wandb_run_name "robotwin2-fsdp-fullft-b256-s${SEED}" \
-  --wandb_mode online
+  --disable_checkpoint \
+  --report_to none \
+  --run_report_path "$OUTPUT_DIR/report.json"
