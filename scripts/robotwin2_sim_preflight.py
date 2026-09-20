@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run RoboTwin Stage-A setup/play preflight without modifying the checkout.
 
-A temporary overlay is populated from RoboTwin@96c1fea via ``git archive``.
+A temporary overlay is populated from the project-local RoboTwin checkout at
+the frozen ``96c1fea`` commit.
 The downloaded project-owned embodiment assets are mounted into that overlay,
 and each task/domain is run in a fresh Python process with one seed taken from
 its official clean archive.  Results and logs are written under the project.
@@ -93,9 +94,9 @@ def extract_official_replay(archive: Path, result_root: Path) -> None:
             target.write_bytes(zf.read(member))
 
 
-def write_config(overlay: Path, project_root: Path, task: str, domain: str, result_root: Path) -> None:
+def write_config(overlay: Path, robotwin_root: Path, task: str, domain: str, result_root: Path) -> None:
     fixed = subprocess.run(
-        ["git", "-C", str(project_root.parent / "model_test" / "RoboTwin"), "show", "96c1fea:env_cfg/task_config/demo_clean.yml"],
+        ["git", "-C", str(robotwin_root), "show", "96c1fea:env_cfg/task_config/demo_clean.yml"],
         check=True, stdout=subprocess.PIPE, text=True,
     ).stdout
     config = yaml.safe_load(fixed)
@@ -185,7 +186,6 @@ def worker(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--robotwin-root", type=Path, default=Path("/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin"))
     parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--result-root", type=Path, default=Path("outputs/robotwin_ft/preflight_stage_a"))
     parser.add_argument("--task", choices=TASKS)
@@ -199,12 +199,16 @@ def main() -> int:
     args = parser.parse_args()
     if args.worker:
         return worker(args)
-    robotwin_root = args.robotwin_root.resolve()
     project_root = args.project_root.resolve()
+    robotwin_root = project_root / "third_party" / "RoboTwin"
+    if not robotwin_root.is_dir():
+        raise FileNotFoundError(
+            f"RoboTwin checkout not found: {robotwin_root}; run scripts/bootstrap_robotwin2.sh"
+        )
     result_root = (project_root / args.result_root).resolve() if not args.result_root.is_absolute() else args.result_root.resolve()
     result_root.mkdir(parents=True, exist_ok=True)
     rows = []
-    with tempfile.TemporaryDirectory(prefix="robotwin2_stage_a_") as temp:
+    with tempfile.TemporaryDirectory(prefix="robotwin2_stage_a_", dir=result_root) as temp:
         overlay = prepare_overlay(robotwin_root, project_root, Path(temp))
         for domain in args.domains:
             spec = DOMAINS[domain]
@@ -213,7 +217,7 @@ def main() -> int:
                 seed = first_official_seed(archive)
                 pair_root = result_root / f"{domain}__{task}"
                 extract_official_replay(archive, pair_root)
-                write_config(overlay, project_root, task, domain, pair_root)
+                write_config(overlay, robotwin_root, task, domain, pair_root)
                 result = result_root / f"{domain}__{task}.json"
                 log = result_root / f"{domain}__{task}.log"
                 env = os.environ.copy(); env.update({"PYTHONPATH": str(overlay), "PYOPENGL_PLATFORM": "egl"})

@@ -5,8 +5,8 @@
 本文对应的代码和官方仓库快照：
 
 - X-VLA fork：`/mnt/mnt/data/zxw/cross-embodiment_generalization/X-VLA_reproduction`，当前基线提交 `d1c031d`。
-- RoboTwin 2.0：`/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin`，官方代码快照 `96c1fea`；XPolicyLab 官方子模块固定在 `c37109c`。
-- 官方依据仅限上述提交中由 Git 跟踪的文件。RoboTwin 主仓库或 XPolicyLab 子模块工作区中的未跟踪、未提交和本地修改文件均不得作为设计或实现依据。
+- RoboTwin 2.0 运行时 checkout：项目内 `third_party/RoboTwin`，官方代码快照 `96c1fea`；XPolicyLab 官方子模块固定在 `c37109c`。
+- 官方依据仅限上述提交中由 Git 跟踪的文件。每台机器通过 `scripts/bootstrap_robotwin2.sh` 准备被 Git 忽略的 checkout；RoboTwin 主仓库或 XPolicyLab 子模块工作区中的未跟踪、未提交和本地修改文件均不得作为设计或实现依据。
 - 官方数据说明、HDF5 格式和图像解码说明来自已跟踪的 RoboTwin `README.md`、`data/decode_image_bit.py`、`envs/utils/pkl2hdf5.py`、`envs/`、明确列出的 `env_cfg` 官方文件、XPolicyLab 固定提交及官方数据仓库 `TianxingChen/RoboTwin2.0`。
 
 ## 1. 实验问题与不可改变的结论

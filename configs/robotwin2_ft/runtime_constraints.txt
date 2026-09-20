@@ -1,0 +1,12 @@
+# Shared training/rollout constraints. PyTorch wheels use CUDA 12.1.
+torch==2.4.1
+torchvision==0.19.1
+numpy==1.26.3
+scipy==1.15.0
+transformers==4.51.3
+huggingface-hub==0.30.2
+opencv-python==4.10.0.84
+opencv-python-headless==4.10.0.84
+setuptools==69.5.1
+setuptools-scm==8.1.0
+warp-lang==1.12.0

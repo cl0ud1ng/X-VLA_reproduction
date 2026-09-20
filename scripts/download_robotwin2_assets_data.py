@@ -11,6 +11,7 @@ partially completed run can be resumed and audited.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -23,7 +24,7 @@ from huggingface_hub import hf_hub_download
 
 
 REPO_ID = "TianxingChen/RoboTwin2.0"
-REVISION = "main"
+REVISION = "981c92aa34d8f94d4cff47e0d5bc2f7d4e0af042"
 TASKS = (
     "beat_block_hammer",
     "stack_blocks_two",
@@ -54,10 +55,24 @@ def _files() -> Iterable[tuple[str, str, Path]]:
             yield rel, rel, Path("data/raw/archives") / task / archive
 
 
-def _download_one(repo_id: str, revision: str, remote: str, destination: Path, force: bool) -> dict:
+def record_file(remote: str, local: str, path: Path, status: str) -> dict:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(block)
+    lock = json.loads((Path(__file__).resolve().parents[1] / "configs/robotwin2_ft/assets_lock.json").read_text())
+    expected = lock[remote]
+    if path.stat().st_size != expected["size"] or digest.hexdigest() != expected["sha256"]:
+        raise ValueError(f"Checksum mismatch: {path}; preserve/replace this file before retrying")
+    return {"remote": remote, "local": local, "status": status,
+            "size": path.stat().st_size, "sha256": digest.hexdigest()}
+
+
+def _download_one(repo_id: str, revision: str, remote: str, destination: Path, output_root: Path, force: bool) -> dict:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    local = destination.resolve().relative_to(output_root.resolve()).as_posix()
     if destination.exists() and destination.stat().st_size > 0 and not force:
-        return {"remote": remote, "local": str(destination.resolve()), "status": "exists", "size": destination.stat().st_size}
+        return record_file(remote, local, destination, "exists")
     # hf_hub_download writes atomically in its cache/local_dir; copy the
     # completed path to our explicit project-owned output only afterwards.
     cache_dir = destination.parent / ".hf_cache"
@@ -72,7 +87,7 @@ def _download_one(repo_id: str, revision: str, remote: str, destination: Path, f
     )
     source = Path(path)
     os.replace(source, destination)
-    return {"remote": remote, "local": str(destination.resolve()), "status": "downloaded", "size": destination.stat().st_size}
+    return record_file(remote, local, destination, "downloaded")
 
 
 def main() -> None:
@@ -100,7 +115,7 @@ def main() -> None:
     records: list[dict] = []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {
-            pool.submit(_download_one, args.repo_id, args.revision, remote, local, args.force): remote
+            pool.submit(_download_one, args.repo_id, args.revision, remote, local, root, args.force): remote
             for remote, _, local in jobs
         }
         for future in as_completed(futures):

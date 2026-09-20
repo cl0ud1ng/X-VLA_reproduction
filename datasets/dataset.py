@@ -41,6 +41,7 @@ class ManifestWindowDataset(IterableDataset):
         self.base_seed = int(base_seed)
         self.finite = bool(finite)
         self.max_samples = max_samples
+        self.project_root = Path(__file__).resolve().parents[1]
         if sampler_mode not in ("domain_balanced", "tempered_T2"):
             raise ValueError(f"unknown RoboTwin sampler mode: {sampler_mode}")
         if self.total.get("qdur_sec") != 1.0 or self.total.get("num_actions") != 30:
@@ -70,18 +71,20 @@ class ManifestWindowDataset(IterableDataset):
             # Prefer an explicitly recorded path if present in the pair record.
             index_path_recorded = pair.get("windows_path")
             if index_path_recorded:
-                index_path = Path(index_path_recorded)
+                index_path = self._resolve_path(index_path_recorded)
             if not index_path.exists():
                 raise FileNotFoundError(index_path)
             entries = [json.loads(line) for line in index_path.read_text(encoding="utf-8").splitlines() if line.strip()]
             if len(entries) != int(pair["num_action_observation_windows"]):
                 raise ValueError(f"{key}: index count does not match manifest")
             for entry in entries:
+                entry["hdf5_path"] = str(self._resolve_path(entry["hdf5_path"]))
                 if int(entry.get("domain_id", -1)) != domain_id or entry.get("task") != task:
                     raise ValueError(f"{key}: malformed window entry")
                 if entry.get("num_actions") != 30 or entry.get("qdur_sec") != 1.0:
                     raise ValueError(f"{key}: window contract mismatch")
             meta = dict(pair)
+            meta["datalist"] = [str(self._resolve_path(p)) for p in pair["datalist"]]
             meta["windows_path"] = str(index_path)
             handler = RobotWin2FTHandler(meta, num_views=3, image_aug=self.image_aug, windows=entries)
             self._handlers[key] = handler
@@ -102,6 +105,13 @@ class ManifestWindowDataset(IterableDataset):
     @staticmethod
     def _domain_name(domain_id: int) -> str:
         return {0: "aloha-agilex", 1: "arx-x5", 2: "piper"}[domain_id]
+
+    def _resolve_path(self, value: str | Path) -> Path:
+        # Portable manifests have one explicit base: this checkout root.
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"manifest requires a project-relative path: {value}")
+        return self.project_root / path
 
     def __len__(self):
         return sum(len(v) for v in self._entries.values())

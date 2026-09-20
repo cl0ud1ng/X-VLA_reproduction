@@ -1,0 +1,66 @@
+{
+  "dataset/beat_block_hammer/aloha-agilex_clean_50.zip": {
+    "sha256": "a135ad233bdcffff65fb636780f95ec34abc36ccf2bd0ff26ab07c9c464cc6af",
+    "size": 229401324
+  },
+  "dataset/beat_block_hammer/arx-x5_clean_50.zip": {
+    "sha256": "2e00e74ba5725d1613c2211628a32d10f86488a626182a5645f17bcff11451a1",
+    "size": 128421556
+  },
+  "dataset/beat_block_hammer/piper_clean_50.zip": {
+    "sha256": "734f9dff40a4d9a345a5c369c5207d69decb6f0c67e6543093e54a603bfbc36d",
+    "size": 130352838
+  },
+  "dataset/move_can_pot/aloha-agilex_clean_50.zip": {
+    "sha256": "fbf5231c5be71405364b09ed718cfca1e07a6509f6d1a801f5922516da0ade09",
+    "size": 312581958
+  },
+  "dataset/move_can_pot/arx-x5_clean_50.zip": {
+    "sha256": "8af739367ce74d9b982fc37cd712d6e7674de8d26571df40db3bd7d23f50acae",
+    "size": 218811989
+  },
+  "dataset/move_can_pot/piper_clean_50.zip": {
+    "sha256": "e902b72d8111065080b0432cf2750b9754e8c84f16909376ecb7c85c0fcd0d2f",
+    "size": 212427528
+  },
+  "dataset/open_microwave/aloha-agilex_clean_50.zip": {
+    "sha256": "8cf14879560849a76738fb05a1842608fe79831efac625b81aa4c886edeff132",
+    "size": 982663234
+  },
+  "dataset/open_microwave/arx-x5_clean_50.zip": {
+    "sha256": "4c4faaad4ddc9390f661ffad77038368eb30c658504e4148f115208665113c50",
+    "size": 1305279581
+  },
+  "dataset/open_microwave/piper_clean_50.zip": {
+    "sha256": "158f37562c34c6a21661d69eaca055630607caee53c8423eddd9a5619290db75",
+    "size": 673165952
+  },
+  "dataset/place_dual_shoes/aloha-agilex_clean_50.zip": {
+    "sha256": "0cdb0e5c03a30332c928cce1c430a21da8248adc01608706487709283168f703",
+    "size": 627881534
+  },
+  "dataset/place_dual_shoes/arx-x5_clean_50.zip": {
+    "sha256": "8dffca747625c2ecd96355a8f6cda583f2cdef6a550f0d68c5ce52cf18494d21",
+    "size": 363280084
+  },
+  "dataset/place_dual_shoes/piper_clean_50.zip": {
+    "sha256": "b66682febb4bc724cb2a8035d0ea0a9343d7ae373e2e58b7b35ab10bde57a047",
+    "size": 418532558
+  },
+  "dataset/stack_blocks_two/aloha-agilex_clean_50.zip": {
+    "sha256": "49f0a3581142be4934b5e25cd9e315432315a069ba26e65318417ed691389ecd",
+    "size": 601634751
+  },
+  "dataset/stack_blocks_two/arx-x5_clean_50.zip": {
+    "sha256": "dfcdc4311acb01dc7ad903c219c522a0d7f28b3ae52ca403f0c362dcbfe35d8b",
+    "size": 369060158
+  },
+  "dataset/stack_blocks_two/piper_clean_50.zip": {
+    "sha256": "f95dc2760265417b543bb1e068031ad610eb254ac22957870842d4cf27970365",
+    "size": 396906249
+  },
+  "embodiments.zip": {
+    "sha256": "6b87d7d55e106d8ff25917e0538eb1e177fc549280e8a742a8cec3cb9f953fc6",
+    "size": 219859313
+  }
+}

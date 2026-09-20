@@ -33,6 +33,8 @@ https://github.com/user-attachments/assets/c047bac4-17c3-4d66-8036-badfab2b8c41
 
 ---
 
+本 fork 的 RoboTwin 三具身训练环境与跨机器准备流程见 [部署文档](docs/robotwin2_deployment.md)。
+
 ## 🚀 Quick Start: Installation & Deployment
 
 ### 1️⃣ Installation

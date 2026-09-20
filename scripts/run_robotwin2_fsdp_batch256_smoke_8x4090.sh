@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT=/mnt/mnt/data/zxw/cross-embodiment_generalization/X-VLA_reproduction
-ACCELERATE=/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin/.venv/bin/accelerate
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON="$PROJECT_ROOT/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  echo "Missing project .venv: run scripts/bootstrap_robotwin2.sh" >&2
+  exit 1
+fi
 OUTPUT_DIR="$PROJECT_ROOT/outputs/robotwin_ft/fsdp_fullft_batch256_smoke"
 PORT=${PORT:-29594}
 
 cd "$PROJECT_ROOT"
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$ACCELERATE" launch \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$PYTHON" -m accelerate.commands.launch \
   --multi_gpu \
   --num_processes 8 \
   --num_machines 1 \

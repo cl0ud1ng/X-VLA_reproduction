@@ -10,7 +10,10 @@
 - 使用 domain-balanced 和 tempered sampling 进行 X-VLA 微调；
 - 通过 RoboTwin 仿真 rollout 评估模型能力。
 
-训练数据只用于训练，最终能力以 RoboTwin 仿真测试为准。外部 RoboTwin 项目是运行时依赖和数据/环境来源，不是本项目的代码归属范围。
+训练数据只用于训练，最终能力以 RoboTwin 仿真测试为准。RoboTwin 仍是
+上游运行时和数据来源，但本项目不依赖某台机器上的隐式绝对路径；需要预处理
+或仿真时，在项目内的 `third_party/RoboTwin/` 按固定提交准备一个被 Git
+忽略的 checkout。
 
 ## 必读文档
 
@@ -27,10 +30,10 @@
 1. 所有代码和产物都必须放在本项目目录 `/mnt/mnt/data/zxw/cross-embodiment_generalization/X-VLA_reproduction` 下。
    - 包括 Python 代码、配置、转换脚本、manifest、缓存索引、训练日志、checkpoint、评测结果、可视化和临时实验报告。
    - 新增文件应放在已有职责明确的目录中；没有合适目录时再创建最小范围的新目录。
-2. 外部资产仅供调用，不在外部目录写入、修改或生成项目产物。
-   - RoboTwin 源码、仿真资产、官方数据集和基础 checkpoint 可以从外部路径读取或调用。
-   - 不要把本项目的补丁、生成配置、转换结果、日志或 checkpoint 写回 RoboTwin 目录或其他外部项目目录。
-   - 需要记录外部依赖时，在本项目内保存路径、版本/commit、文件 hash 和调用参数。
+2. 机器本地的上游资产只作为输入，不在其中写入本项目产物。
+   - RoboTwin checkout 位于项目内的 `third_party/RoboTwin/`，但被 Git 忽略并在每台机器上按固定提交恢复。
+   - 不要把本项目的补丁、生成配置、转换结果、日志或 checkpoint 写回上游仓库目录。
+   - 需要记录上游依赖时，在本项目内保存来源、版本/commit、文件 hash 和调用参数。
 3. 使用绝对路径时，应把它作为运行时输入或配置项记录在本项目内；不要把外部路径硬编码成产物输出位置。
 4. 不要覆盖用户已有的修改、未跟踪文件或外部资产。涉及同一路径时，先确认文件归属和当前状态。
 
@@ -58,15 +61,19 @@
 - 不要把本地生成的缓存、日志、checkpoint 或大数据文件误当作源代码提交；必要时在 `.gitignore` 或文档中明确其位置。
 - 报告结果时说明使用的 X-VLA commit、RoboTwin commit、manifest、domain/task、采样策略、seed 和输出路径。
 
-## 外部 RoboTwin 使用边界
+## RoboTwin 使用边界
 
-外部 RoboTwin 路径当前约定为：
+RoboTwin 的项目内运行时路径约定为：
 
 ```text
-/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin
+third_party/RoboTwin
 ```
 
-它只作为官方数据、仿真环境和运行时资产的来源。实现时应遵循 `docs/experiment_design.md` 中固定的官方提交、官方 HDF5/XPolicyLab schema 和五个任务矩阵；不要引用该工作区中为其他项目创建的未跟踪或未提交代码、配置和脚本。
+该目录加入 `.gitignore`，由 `scripts/bootstrap_robotwin2.sh` 或
+`third_party/README.md` 中的命令在每台机器上按 RoboTwin `96c1fea` 和
+XPolicyLab `c37109c` 准备。训练可以只依赖项目内生成的 normalized HDF5；
+预处理和 rollout 才需要该 checkout。不得复制其他项目工作区中的未跟踪、
+未提交代码、配置和脚本。
 
 ## 完成标准
 

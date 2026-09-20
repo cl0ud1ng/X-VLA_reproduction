@@ -6,8 +6,8 @@ We evaluate **X-VLA** on the **RoboTwin-2.0** benchmark to assess its ability to
 
 ## 1️⃣ Environment Setup
 
-Follow the official instructions from the original RoboTwin-2.0 repository:  
-👉 [https://robotwin-platform.github.io/doc/usage/index.html](https://robotwin-platform.github.io/doc/usage/index.html)
+Prepare the pinned RoboTwin checkout with `bash scripts/bootstrap_robotwin2.sh
+--with-rollout`.  The checkout is expected at `third_party/RoboTwin`.
 
 No additional modifications are required for X-VLA evaluation.
 
@@ -24,12 +24,6 @@ python -m deploy --model_path 2toINF/X-VLA-RoboTwin2
 ---
 
 ## 3️⃣ Run the Client Evaluation
-Add the absolute path of your RoboTwin repository at line 4 of `X-VLA/evaluation/robotwin-2.0/client.py`:
-
-```
-robowin_root = Path("/home/dodo/fyc/RoboTwin") # <- Add your path
-```
-
 Launch the RoboTwin-2.0 evaluation client to connect to your X-VLA server:
 
 ```bash

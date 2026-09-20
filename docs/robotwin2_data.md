@@ -1,12 +1,12 @@
 # RoboTwin 2.0 数据与具身资产准备记录
 
-本目录记录按 [`experiment_design.md`](experiment_design.md) 完成的第一阶段准备结果。外部 RoboTwin 只作为只读运行时依赖；所有下载、解压、normalized HDF5、窗口索引和审计结果均在本项目内。
+本目录记录按 [`experiment_design.md`](experiment_design.md) 完成的第一阶段准备结果。RoboTwin checkout 位于项目内的 `third_party/RoboTwin/`，但被 Git 忽略并由 bootstrap 脚本在每台机器上按固定提交恢复；所有下载、解压、normalized HDF5、窗口索引和审计结果均在本项目内。
 
 ## 来源与产物
 
 - RoboTwin 源码固定提交：`96c1fea`
 - XPolicyLab 子模块固定提交：`c37109c`
-- 数据仓库：`TianxingChen/RoboTwin2.0@main`
+- 数据仓库：`TianxingChen/RoboTwin2.0@981c92aa34d8f94d4cff47e0d5bc2f7d4e0af042`
 - 下载记录、大小和 SHA-256：[`data/raw/download_manifest.json`](../data/raw/download_manifest.json)
 - 官方具身包：[`assets/embodiments.zip`](../assets/embodiments.zip)
 - 解压后的具身资产：[`assets/robotwin/embodiments/`](../assets/robotwin/embodiments/)
@@ -18,21 +18,17 @@
 
 ## 可重复命令
 
-依赖使用外部 RoboTwin 虚拟环境中已安装的 `h5py/numpy/scipy/Pillow/PyYAML`：
+依赖使用项目内 `.venv`；首次准备直接运行：
 
 ```bash
-python3 scripts/download_robotwin2_assets_data.py --output-root . --workers 4
-unzip -q -o assets/embodiments.zip -d assets/robotwin
-/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin/.venv/bin/python scripts/audit_robotwin2_assets.py
-/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin/.venv/bin/python scripts/preprocess_robotwin2.py \
-  --archive-root data/raw/archives \
-  --output-root data/processed/robotwin2_ft \
-  --manifest-root outputs/robotwin_ft/manifests/official_clean_50 \
-  --base-config configs/robotwin2_ft/base_poses.json
-/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin/.venv/bin/python scripts/audit_robotwin2_preprocessed.py
+bash scripts/bootstrap_robotwin2.sh
 ```
 
-下载脚本可安全重跑；已有文件按大小存在检查跳过。预处理脚本从 archive 的 native HDF5 提取必需字段，按官方 `envs/utils/pkl2hdf5.py` 对齐规则生成 XPolicyLab v1.0：`state=原轨迹[:-1]`、`action=原轨迹[1:]`、`vision=原图像[:-1]`。图像仍保存为 encoded bits，读取时只能调用官方 `decode_image_bit` 或项目内等价实现 [`scripts/robotwin2_decode.py`](../scripts/robotwin2_decode.py)，不得再做 BGR/RGB 交换。
+若只需训练，不需要安装 rollout 依赖；需要仿真时使用
+`bash scripts/bootstrap_robotwin2.sh --with-rollout`，并先准备
+`third_party/RoboTwin/assets/` 下的官方场景资产。
+
+下载脚本可安全重跑；已有文件按冻结大小和 SHA-256 校验后跳过。预处理脚本从 archive 的 native HDF5 提取必需字段，按官方 `envs/utils/pkl2hdf5.py` 对齐规则生成 XPolicyLab v1.0：`state=原轨迹[:-1]`、`action=原轨迹[1:]`、`vision=原图像[:-1]`。图像仍保存为 encoded bits，读取时只能调用官方 `decode_image_bit` 或项目内等价实现 [`scripts/robotwin2_decode.py`](../scripts/robotwin2_decode.py)，不得再做 BGR/RGB 交换。
 
 ## 当前审计结果
 

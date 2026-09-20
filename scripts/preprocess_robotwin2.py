@@ -43,6 +43,19 @@ DOMAINS = {
     "arx-x5": {"domain_id": 1, "embodiment": "ARX-X5", "robot_type": "robotwin2_ft_arx_x5"},
     "piper": {"domain_id": 2, "embodiment": "piper-dual", "robot_type": "robotwin2_ft_piper_dual"},
 }
+
+
+def _project_root() -> Path:
+    """Return the checkout root without depending on the host machine path."""
+    return Path(__file__).resolve().parents[1]
+
+
+def _portable_path(path: Path, project_root: Path) -> str:
+    """Store paths relative to the project so manifests work after a clone."""
+    try:
+        return path.resolve().relative_to(project_root.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"path must be inside project root: {path}") from exc
 CAMERAS = (
     ("head_camera", "cam_head"),
     ("left_camera", "cam_left_wrist"),
@@ -146,7 +159,10 @@ def _write_normalized(native: Path, output: Path, instructions: list[str], frequ
             dst.create_dataset("instructions", data=json.dumps(instructions, ensure_ascii=False), dtype=text)
             dst.create_group("additional_info").create_dataset("frequency", data=np.asarray(frequency, dtype=np.float32))
             dst.attrs["source_schema"] = "RoboTwin native HDF5 -> official pkl2hdf5 field mapping"
-            dst.attrs["source_archive"] = str(source_archive.resolve())
+            # Keep provenance portable across machines.  The manifest stores
+            # the repository-relative archive path; never embed the host's
+            # absolute checkout path in HDF5 metadata.
+            dst.attrs["source_archive"] = str(source_archive)
             dst.attrs["base_pose_left"] = json.dumps(base_left)
             dst.attrs["base_pose_right"] = json.dumps(base_right)
             state, action = dst.create_group("state"), dst.create_group("action")
@@ -214,7 +230,7 @@ def _continuous_eef(h5_path: Path, base_left: np.ndarray, base_right: np.ndarray
         return poses["left"], poses["right"], freq, shape
 
 
-def _window_entries(h5_path: Path, task: str, domain: str, instruction: list[str], base_left: list[float], base_right: list[float], num_actions: int, qdur: float, static_threshold: float) -> tuple[list[dict], int, int]:
+def _window_entries(h5_path: Path, task: str, domain: str, instruction: list[str], base_left: list[float], base_right: list[float], num_actions: int, qdur: float, static_threshold: float, project_root: Path) -> tuple[list[dict], int, int]:
     left, right, freq, image_shape = _continuous_eef(h5_path, _pose_matrix(base_left), _pose_matrix(base_right))
     # Images/state are available at continuous indices [0, T-2]; the final
     # action-only point is used for terminal-hold interpolation but is never a
@@ -261,7 +277,7 @@ def _window_entries(h5_path: Path, task: str, domain: str, instruction: list[str
             if pos_delta < static_threshold and grip_same:
                 continue
         entries.append({
-            "hdf5_path": str(h5_path.resolve()),
+            "hdf5_path": _portable_path(h5_path, project_root),
             "frame_idx": frame_idx,
             "timestamp_sec": t0,
             "task": task,
@@ -333,6 +349,7 @@ def main() -> None:
         raise SystemExit("This experiment freezes --qdur=1.0 and --num-actions=30")
     if args.native_frequency <= 0 or args.static_threshold < 0:
         raise SystemExit("invalid frequency/threshold")
+    project_root = _project_root()
     base_config = _read_base_config(args.base_config)
     args.output_root.mkdir(parents=True, exist_ok=True)
     args.manifest_root.mkdir(parents=True, exist_ok=True)
@@ -343,7 +360,7 @@ def main() -> None:
             if not archive.exists():
                 raise FileNotFoundError(f"missing archive {archive}; run scripts/download_robotwin2_assets_data.py first")
             pair_root = args.output_root / domain / task
-            extract_root = (pair_root / "_native_extract") if args.keep_extracted else Path(tempfile.mkdtemp(prefix=f"robotwin2_{domain}_{task}_"))
+            extract_root = (pair_root / "_native_extract") if args.keep_extracted else Path(tempfile.mkdtemp(prefix=f"robotwin2_{domain}_{task}_", dir=args.output_root))
             try:
                 native_files, scene_file, _ = _extract_archive(archive, domain, extract_root)
                 scene_info = json.loads(scene_file.read_text(encoding="utf-8"))
@@ -367,8 +384,8 @@ def main() -> None:
                     if not instruction_values:
                         raise ValueError(f"{archive}: episode{idx} has no seen instruction")
                     out_h5 = pair_dir / f"episode_{idx:07d}.hdf5"
-                    _write_normalized(native, out_h5, instruction_values, args.native_frequency, base_config[domain]["left"], base_config[domain]["right"], archive)
-                    entries, candidate_count, terminal_count = _window_entries(out_h5, task, domain, instruction_values, base_config[domain]["left"], base_config[domain]["right"], args.num_actions, args.qdur, args.static_threshold)
+                    _write_normalized(native, out_h5, instruction_values, args.native_frequency, base_config[domain]["left"], base_config[domain]["right"], Path(_portable_path(archive, project_root)))
+                    entries, candidate_count, terminal_count = _window_entries(out_h5, task, domain, instruction_values, base_config[domain]["left"], base_config[domain]["right"], args.num_actions, args.qdur, args.static_threshold, project_root)
                     pair_windows.extend(entries)
                     candidate_total += candidate_count
                     terminal_total += terminal_count
@@ -381,11 +398,11 @@ def main() -> None:
                     "task_names": [task],
                     "task": task,
                     "source": "official",
-                    "source_archive": str(archive.resolve()),
+                    "source_archive": _portable_path(archive, project_root),
                     "source_schema": "RoboTwin native HDF5 normalized with official envs/utils/pkl2hdf5.py mapping",
                     "robowin_commit": "96c1fea",
                     "xpolicylab_commit": "c37109c",
-                    "base_pose_source": str(Path("/mnt/mnt/data/zxw/cross-embodiment_generalization/model_test/RoboTwin/assets/embodiments").resolve()),
+                    "base_pose_source": "assets/robotwin/embodiments",
                     "base_pose_left": base_config[domain]["left"],
                     "base_pose_right": base_config[domain]["right"],
                     "fps_source": "native archive; official pkl2hdf5 default",
@@ -398,7 +415,7 @@ def main() -> None:
                     "quaternion_convention": "scalar_first_wxyz",
                     "action_representation": "absolute_eef6d_robot_base",
                     "instruction_dir": "archive-internal instructions/episodeN.json",
-                    "datalist": [str((pair_dir / f"episode_{idx:07d}.hdf5").resolve()) for idx in range(50)],
+                    "datalist": [_portable_path(pair_dir / f"episode_{idx:07d}.hdf5", project_root) for idx in range(50)],
                     "episodes": 50,
                     "num_observation_frames": candidate_total,
                     "num_action_observation_windows": len(pair_windows),
@@ -443,7 +460,7 @@ def main() -> None:
         "camera_keys": ["vision/cam_head/colors", "vision/cam_left_wrist/colors", "vision/cam_right_wrist/colors"],
         "quaternion_convention": "scalar_first_wxyz",
         "action_representation": "absolute_eef6d_robot_base",
-        "pair_manifests": [str((args.manifest_root / f"{domain}__{task}.json").resolve()) for domain in args.domains for task in args.tasks],
+        "pair_manifests": [_portable_path(args.manifest_root / f"{domain}__{task}.json", project_root) for domain in args.domains for task in args.tasks],
         "pairs": pairs,
         "N_dt": n_dt,
         "N_d": n_d,
@@ -451,7 +468,7 @@ def main() -> None:
             "domain_balanced": {"formula": "p(d,t)=1/15", "probabilities": balanced},
             "tempered_T2": {"temperature": 2.0, "alpha": 0.5, "formula": "p(d)=N_d^0.5/sum N_j^0.5; p(t|d)=N_dt^0.5/sum N_du^0.5", "probabilities": tempered},
         },
-        "windows_jsonl": [str((args.manifest_root / f"{domain}__{task}.windows.jsonl").resolve()) for domain in args.domains for task in args.tasks],
+        "windows_jsonl": [_portable_path(args.manifest_root / f"{domain}__{task}.windows.jsonl", project_root) for domain in args.domains for task in args.tasks],
     }
     (args.manifest_root / "total.json").write_text(json.dumps(total_manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Wrote {args.manifest_root / 'total.json'} with {len(all_windows)} windows", flush=True)

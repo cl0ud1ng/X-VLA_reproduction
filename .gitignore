@@ -227,5 +227,12 @@ assets/robotwin/
 data/raw/
 data/processed/
 outputs/robotwin_ft/
+# RoboTwin is cloned at the pinned commit on each machine; do not sync the
+# simulator checkout or its machine-local scene assets through this repository.
+third_party/RoboTwin/
 # W&B logs and artifacts
 wandb/
+
+# Project-local interpreter and optional CUDA planner sources
+.python/
+third_party/curobo/

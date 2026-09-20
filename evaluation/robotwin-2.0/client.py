@@ -1,12 +1,18 @@
+import os
 import sys
 from pathlib import Path
-# Add the absolute path of RoboTwin
-robowin_root = Path("/home/dodo/fyc/RoboTwin")
+# RoboTwin is a project-local checkout prepared by bootstrap_robotwin2.sh.
+project_root = Path(__file__).resolve().parents[2]
+robowin_root = (project_root / "third_party" / "RoboTwin").resolve()
+if not robowin_root.is_dir():
+    raise FileNotFoundError(
+        f"RoboTwin checkout not found: {robowin_root}. "
+        "Run scripts/bootstrap_robotwin2.sh."
+    )
 # Ensure RoboTwin root is the first search in order to use envs
 if str(robowin_root) not in sys.path:
     sys.path.insert(0, str(robowin_root))
 # Ensure CWD is RoboTwin in order to load assets
-import os
 os.chdir(robowin_root)
 
 import argparse
@@ -377,7 +383,7 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate a trained model on multistep sequences with language goals.")
     parser.add_argument("--host", default='0.0.0.0', help="Your client host ip")
     parser.add_argument("--port", default='8001', help="Your client port")
-    parser.add_argument("--eval_log_dir", default='/home/dodo/fyc/HeteroDiffusionPolicy/AbsEEFFlowV4/runnings/RoboTwin/', type=str, help="Where to log the evaluation results.")
+    parser.add_argument("--eval_log_dir", default=str(project_root / "outputs/robotwin_ft/eval"), type=str, help="Where to log the evaluation results.")
     parser.add_argument("--device", default=0, type=int, help="CUDA device")
     parser.add_argument("--num_episodes", default=1000, type=int)
     parser.add_argument("--seed", default=0, type=int)
