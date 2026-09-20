@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="$PROJECT_ROOT/.venv/bin/python"
+export LD_LIBRARY_PATH="$PROJECT_ROOT/.venv/lib/python3.10/site-packages/torch/lib:$PROJECT_ROOT/.cache/cuda/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 PORT="${PORT:-8000}"
 
 # Define your log directory here:

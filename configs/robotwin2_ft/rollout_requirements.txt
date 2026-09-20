@@ -14,3 +14,6 @@ msgpack
 msgpack-numpy
 pyglet<2
 warp-lang==1.12.0
+yourdfpy>=0.0.53
+numpy-quaternion
+scikit-image

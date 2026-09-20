@@ -221,6 +221,9 @@ def main() -> int:
                 result = result_root / f"{domain}__{task}.json"
                 log = result_root / f"{domain}__{task}.log"
                 env = os.environ.copy(); env.update({"PYTHONPATH": str(overlay), "PYOPENGL_PLATFORM": "egl"})
+                torch_lib = project_root / ".venv/lib/python3.10/site-packages/torch/lib"
+                local_cuda_lib = project_root / ".cache/cuda/lib"
+                env["LD_LIBRARY_PATH"] = ":".join(str(p) for p in (torch_lib, local_cuda_lib) if p.exists()) + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
                 command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--overlay", str(overlay), "--task", task, "--domain", domain, "--seed", str(seed), "--result", str(result)]
                 started = time.monotonic()
                 completed = subprocess.run(command, cwd=overlay, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
