@@ -4,7 +4,7 @@
 The scheduler is deliberately independent of a particular GPU count or task
 matrix. It creates one sequential worker per selected GPU and distributes the
 selected domain/task cells deterministically across those workers. The
-8-GPU/main-protocol defaults live in ``run_robotwin2_rollout_8GPU.sh``.
+8-GPU/main-protocol defaults live in ``run_robotwin2_rollout_8GPU_exec1.sh``.
 """
 
 from __future__ import annotations

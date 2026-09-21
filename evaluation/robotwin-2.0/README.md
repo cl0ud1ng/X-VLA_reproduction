@@ -40,7 +40,7 @@ The reproducible stage-D smoke/benchmark launcher covers the five frozen tasks
 on all three domains and keeps one simulator process per GPU:
 
 ```bash
-bash scripts/run_robotwin2_rollout_8GPU.sh \
+bash scripts/run_robotwin2_rollout_8GPU_exec1.sh \
   --host 127.0.0.1 --port 8000 \
   --num-episodes 1
 ```
@@ -53,8 +53,13 @@ smaller matrices or other hardware. The shell wrapper fixes the main protocol
 to all eight GPUs, all three domains, all five tasks, `exec_points=1`, and
 video capture. `exec_points=1` is the required receding-horizon protocol;
 each simulator control step requests a fresh `[30,20]` prediction. Results are
-written under `outputs/robotwin_ft/eval_rollout/`, with per-cell logs and summaries
+written under `outputs/robotwin_ft/eval_exec1/`, with per-cell logs and summaries
 and a top-level `run.json` recording commits, assignments, and conventions.
+
+For the diagnostic `exec_points=10` comparison, use
+`scripts/run_robotwin2_rollout_8GPU_exec10.sh`; its default output directory is
+`outputs/robotwin_ft/eval_exec10/`. For either wrapper, `--output-dir` overrides
+`EVAL_LOG_DIR`, which overrides the wrapper default.
 
 ---
 

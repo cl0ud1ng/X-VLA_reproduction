@@ -226,6 +226,10 @@ def _rollout(env: Any, policy: ClientModel, *, exec_points: int, max_steps: int)
         action = policy.step(obs, env)
         request_count += 1
         for point in action[:exec_points]:
+            # take_action becomes a no-op at the task limit. Stop here instead
+            # of requesting further chunks and recording duplicate frames.
+            if env.eval_success or env.take_action_cnt >= env.step_lim:
+                return int(bool(env.eval_success)), frames, request_count
             left_pose = _world_pose(point[:3], point[3:9], env.robot.left_entity_origion_pose)
             right_pose = _world_pose(point[10:13], point[13:19], env.robot.right_entity_origion_pose)
             left_raw, right_raw = 1.0 - float(np.clip(point[9], 0.0, 1.0)), 1.0 - float(np.clip(point[19], 0.0, 1.0))
@@ -237,6 +241,8 @@ def _rollout(env: Any, policy: ClientModel, *, exec_points: int, max_steps: int)
             success = bool(env.check_success())
             if success or getattr(env, "actor_pose", True) is False:
                 return int(success), frames, request_count
+            if env.eval_success or env.take_action_cnt >= env.step_lim:
+                return int(bool(env.eval_success)), frames, request_count
     return 0, frames, request_count
 
 

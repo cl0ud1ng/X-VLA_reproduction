@@ -29,8 +29,9 @@ exec "$PYTHON" "$PROJECT_ROOT/scripts/run_robotwin2_rollout.py" \
   --tasks "$TASKS" --num-tasks 5 \
   --domains "$DOMAINS" --num-domains 3 \
   --exec-points 1 \
+  --output-dir "${EVAL_LOG_DIR:-$PROJECT_ROOT/outputs/robotwin_ft/eval_exec1}" \
   --host "${MODEL_HOST:-127.0.0.1}" --port "${MODEL_PORT:-8000}" \
   --task-config "${TASK_CONFIG:-demo_clean}" \
-  --num-episodes "${NUM_EPISODES:-1}" --seed "${ROLLOUT_SEED:-0}" \
+  --num-episodes "${NUM_EPISODES:-10}" --seed "${ROLLOUT_SEED:-0}" \
   --max-steps "${MAX_STEPS:-0}" --save-video \
   "$@"
