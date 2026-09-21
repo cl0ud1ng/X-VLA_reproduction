@@ -15,17 +15,17 @@
 
 下列约束必须保持不变：
 
-| 项目 | 冻结规范 |
-|---|---|
-| 具身 | 三个双臂、每臂 6-DoF + 1-DoF gripper：`aloha-agilex`、`ARX-X5`、双 Piper（左右臂均使用 `piper` 配置） |
-| domain id | `aloha-agilex=0`、`ARX-X5=1`、`piper-dual=2`；训练和推理完全一致 |
-| 任务 | `beat_block_hammer`、`stack_blocks_two`、`move_can_pot`、`open_microwave`、`place_dual_shoes` |
-| 观测 | 1 个主相机 `head_camera` + 左腕 `left_camera` + 右腕 `right_camera`；RGB、当前 proprio、语言 |
-| 图像 | 所有相机都使用官方 D435 配置，训练输入统一为 `224x224`，保持 X-VLA 当前 ImageNet 归一化和训练期 ColorJitter |
-| 动作 | absolute EEF6D；左右臂各 10 维，拼成 20 维；位置和旋转均为 robot-base frame；gripper 统一为 `0=open, 1=closed` |
-| 时间 | 每个样本的 future horizon 固定为 `qdur=1.0 s`、动作固定 30 点；训练数据限定为官方筛选的成功 clean demo，尾部不足 1 秒的窗口沿用 X-VLA 官方末帧 clamp 作为 terminal-hold supervision；不得跨 episode 填充 |
-| 采样 | 以 action-observation window 数量统计 `N_d`；主结果跑 `domain-balanced`，并跑 `tempered(T=2)` 对照；五个任务在每个 domain 内等概率 |
-| 评测 | RoboTwin 仿真，不用训练集 action loss 作为最终指标；每个具身 × 任务使用完全相同的评测协议和 seed 列表 |
+| 项目      | 冻结规范                                                                                                                                                                                                  |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 具身      | 三个双臂、每臂 6-DoF + 1-DoF gripper：`aloha-agilex`、`ARX-X5`、双 Piper（左右臂均使用 `piper` 配置）                                                                                               |
+| domain id | `aloha-agilex=0`、`ARX-X5=1`、`piper-dual=2`；训练和推理完全一致                                                                                                                                    |
+| 任务      | `beat_block_hammer`、`stack_blocks_two`、`move_can_pot`、`open_microwave`、`place_dual_shoes`                                                                                                   |
+| 观测      | 1 个主相机`head_camera` + 左腕 `left_camera` + 右腕 `right_camera`；RGB、当前 proprio、语言                                                                                                         |
+| 图像      | 所有相机都使用官方 D435 配置，训练输入统一为`224x224`，保持 X-VLA 当前 ImageNet 归一化和训练期 ColorJitter                                                                                              |
+| 动作      | absolute EEF6D；左右臂各 10 维，拼成 20 维；位置和旋转均为 robot-base frame；gripper 统一为`0=open, 1=closed`                                                                                           |
+| 时间      | 每个样本的 future horizon 固定为`qdur=1.0 s`、动作固定 30 点；训练数据限定为官方筛选的成功 clean demo，尾部不足 1 秒的窗口沿用 X-VLA 官方末帧 clamp 作为 terminal-hold supervision；不得跨 episode 填充 |
+| 采样      | 以 action-observation window 数量统计`N_d`；主结果跑 `domain-balanced`，并跑 `tempered(T=2)` 对照；五个任务在每个 domain 内等概率                                                                   |
+| 评测      | RoboTwin 仿真，不用训练集 action loss 作为最终指标；每个具身 × 任务使用完全相同的评测协议和 seed 列表                                                                                                    |
 
 ### 1.1 关于第三个具身的硬性前置条件
 
@@ -77,11 +77,11 @@ X-VLA 模型本身不内置“把相对位移加到当前 proprio”或“把绝
 
 ### 3.1 具身 domain 表
 
-| domain id | RoboTwin 名称 | 双臂配置 | 每臂 arm dim | gripper dim | 当前状态 |
-|---:|---|---|---:|---:|---|
-| 0 | `aloha-agilex` | `[aloha-agilex]`（同一模型用于左右臂） | 6 | 1 | 官方 archive：`aloha-agilex_clean_50.zip` |
-| 1 | `ARX-X5` | `[ARX-X5, ARX-X5, distance]` | 6 | 1 | 官方 archive：`arx-x5_clean_50.zip` |
-| 2 | `piper-dual` | `[piper, piper, distance]` | 6 | 1 | 官方 archive：`piper_clean_50.zip` |
+| domain id | RoboTwin 名称    | 双臂配置                                 | 每臂 arm dim | gripper dim | 当前状态                                    |
+| --------: | ---------------- | ---------------------------------------- | -----------: | ----------: | ------------------------------------------- |
+|         0 | `aloha-agilex` | `[aloha-agilex]`（同一模型用于左右臂） |            6 |           1 | 官方 archive：`aloha-agilex_clean_50.zip` |
+|         1 | `ARX-X5`       | `[ARX-X5, ARX-X5, distance]`           |            6 |           1 | 官方 archive：`arx-x5_clean_50.zip`       |
+|         2 | `piper-dual`   | `[piper, piper, distance]`             |            6 |           1 | 官方 archive：`piper_clean_50.zip`        |
 
 `domain_id` 是模型的 embodiment condition，不是 task id。任务名只能作为语言和 manifest 元数据，不能替代 domain id。
 
@@ -107,13 +107,13 @@ dataset/<task>/piper_clean_50.zip
 
 官方 archive 路径矩阵固定为：
 
-| task | Aloha | ARX-X5 | Piper |
-|---|---|---|---|
+| task                  | Aloha                                                   | ARX-X5                                            | Piper                                            |
+| --------------------- | ------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------ |
 | `beat_block_hammer` | `dataset/beat_block_hammer/aloha-agilex_clean_50.zip` | `dataset/beat_block_hammer/arx-x5_clean_50.zip` | `dataset/beat_block_hammer/piper_clean_50.zip` |
-| `stack_blocks_two` | `dataset/stack_blocks_two/aloha-agilex_clean_50.zip` | `dataset/stack_blocks_two/arx-x5_clean_50.zip` | `dataset/stack_blocks_two/piper_clean_50.zip` |
-| `move_can_pot` | `dataset/move_can_pot/aloha-agilex_clean_50.zip` | `dataset/move_can_pot/arx-x5_clean_50.zip` | `dataset/move_can_pot/piper_clean_50.zip` |
-| `open_microwave` | `dataset/open_microwave/aloha-agilex_clean_50.zip` | `dataset/open_microwave/arx-x5_clean_50.zip` | `dataset/open_microwave/piper_clean_50.zip` |
-| `place_dual_shoes` | `dataset/place_dual_shoes/aloha-agilex_clean_50.zip` | `dataset/place_dual_shoes/arx-x5_clean_50.zip` | `dataset/place_dual_shoes/piper_clean_50.zip` |
+| `stack_blocks_two`  | `dataset/stack_blocks_two/aloha-agilex_clean_50.zip`  | `dataset/stack_blocks_two/arx-x5_clean_50.zip`  | `dataset/stack_blocks_two/piper_clean_50.zip`  |
+| `move_can_pot`      | `dataset/move_can_pot/aloha-agilex_clean_50.zip`      | `dataset/move_can_pot/arx-x5_clean_50.zip`      | `dataset/move_can_pot/piper_clean_50.zip`      |
+| `open_microwave`    | `dataset/open_microwave/aloha-agilex_clean_50.zip`    | `dataset/open_microwave/arx-x5_clean_50.zip`    | `dataset/open_microwave/piper_clean_50.zip`    |
+| `place_dual_shoes`  | `dataset/place_dual_shoes/aloha-agilex_clean_50.zip`  | `dataset/place_dual_shoes/arx-x5_clean_50.zip`  | `dataset/place_dual_shoes/piper_clean_50.zip`  |
 
 ### 3.3 官方数据优先顺序
 
@@ -362,31 +362,31 @@ RoboTwin 的 `take_action(action_type='ee')` 接受 world-frame target pose；�
 
 ### 阶段 A：具身/仿真 preflight（无模型）
 
-- [x] 三个具身的 asset、URDF、左右 arm dim 均为 `[6,6]`，gripper dim 为 `[1,1]`。
-- [x] 五个 task 在三种具身上均能 `setup_demo`，并能成功跑至少一个官方 seed。
-- [x] head/left/right 三路相机均存在，分辨率和帧数一致；HDF5 schema audit 通过。
-- [x] 官方 `decode_image_bit` 输出 RGB；抽查一帧确认没有额外 BGR 交换。
-- [x] pose quaternion 确认为 transforms3d scalar-first；6D round-trip 通过。
+- [X] 三个具身的 asset、URDF、左右 arm dim 均为 `[6,6]`，gripper dim 为 `[1,1]`。
+- [X] 五个 task 在三种具身上均能 `setup_demo`，并能成功跑至少一个官方 seed。
+- [X] head/left/right 三路相机均存在，分辨率和帧数一致；HDF5 schema audit 通过。
+- [X] 官方 `decode_image_bit` 输出 RGB；抽查一帧确认没有额外 BGR 交换。
+- [X] pose quaternion 确认为 transforms3d scalar-first；6D round-trip 通过。
 
 ### 阶段 B：数据转换与 sampler preflight
 
-- [x] 15 个 `domain × task` 都有 manifest。
-- [x] 每个样本是 `image_input [3,3,224,224]`、`image_mask [3]` 全 True、`proprio [20]`、`action [30,20]`、`domain_id∈{0,1,2}`。
-- [x] 所有窗口 horizon 恰为 1.0 秒；尾部查询超出 episode 时仅使用当前 episode 的末帧 clamp，并已标记 `terminal_hold`；所有值 finite。
-- [x] `N_dt/N_d`、balanced 和 tempered(T=2) 概率可复算；10,000 次抽样误差 <2%。
-- [x] 一个 batch 同时出现多个 domain，且三 domain 的计数与目标频率一致。
+- [X] 15 个 `domain × task` 都有 manifest。
+- [X] 每个样本是 `image_input [3,3,224,224]`、`image_mask [3]` 全 True、`proprio [20]`、`action [30,20]`、`domain_id∈{0,1,2}`。
+- [X] 所有窗口 horizon 恰为 1.0 秒；尾部查询超出 episode 时仅使用当前 episode 的末帧 clamp，并已标记 `terminal_hold`；所有值 finite。
+- [X] `N_dt/N_d`、balanced 和 tempered(T=2) 概率可复算；10,000 次抽样误差 <2%。
+- [X] 一个 batch 同时出现多个 domain，且三 domain 的计数与目标频率一致。
 
 ### 阶段 C：模型 smoke test
 
-- [x] 用每个 domain 各 2 个样本完成 forward/backward 100 steps，无 shape、NaN、BCE target 或 device 错误。
-- [x] 输出固定为 `[B,30,20]`；保存/重新加载 checkpoint 后 processor 和 domain embedding 均存在。
-- [x] 训练日志包含 `loss_position、loss_rotate6D、loss_gripper、domain_count[0..2]、task_count` 和四组 learning rate。
+- [X] 用每个 domain 各 2 个样本完成 forward/backward 100 steps，无 shape、NaN、BCE target 或 device 错误。
+- [X] 输出固定为 `[B,30,20]`；保存/重新加载 checkpoint 后 processor 和 domain embedding 均存在。
+- [X] 训练日志包含 `loss_position、loss_rotate6D、loss_gripper、domain_count[0..2]、task_count` 和四组 learning rate。
 
 ### 阶段 D：最小 rollout
 
-- [ ] 15 个评测单元每个先跑 1 episode；检查 action base/world round-trip、gripper 开闭和相机顺序。
-- [ ] 确认 client 每个 control step 都重新请求模型，且没有越过 RoboTwin `take_action` 的 pose frame 约定。
-- [ ] 只有 smoke 全部通过后，才运行正式 20-episode × 15-cell × 3-seed 评测。
+- [X] 15 个评测单元每个先跑 1 episode；检查 action base/world round-trip、gripper 开闭和相机顺序。
+- [X] 确认 client 每个 control step 都重新请求模型，且没有越过 RoboTwin `take_action` 的 pose frame 约定。
+- [X] 只有 smoke 全部通过后，才运行正式 20-episode × 15-cell × 3-seed 评测。
 
 ## 10. 结果目录和可追溯性
 
