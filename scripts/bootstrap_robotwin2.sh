@@ -168,6 +168,22 @@ if [[ ! -e "$ROBOTWIN_ROOT/assets/embodiments" && -d "$PROJECT_ROOT/assets/robot
   ln -s ../../../assets/robotwin/embodiments "$ROBOTWIN_ROOT/assets/embodiments"
 fi
 
+# The downloaded embodiment bundle stores cuRobo templates with a placeholder
+# because the absolute checkout path differs between machines.  Materialize
+# the runtime files in the project-owned asset bundle; RoboTwin sees them via
+# the symlink above and the checkout itself remains otherwise untouched.
+if [[ -d "$PROJECT_ROOT/assets/robotwin/embodiments" ]]; then
+  for embodiment in aloha-agilex ARX-X5 piper; do
+    source_dir="$PROJECT_ROOT/assets/robotwin/embodiments/$embodiment"
+    [[ -d "$source_dir" ]] || continue
+    for template in "$source_dir"/*_tmp.yml; do
+      [[ -f "$template" ]] || continue
+      target="${template%_tmp.yml}.yml"
+      sed "s#\${ASSETS_PATH}#$ROBOTWIN_ROOT#g" "$template" > "$target"
+    done
+  done
+fi
+
 if [[ "$PREPROCESS" -eq 1 ]]; then
   "$PYTHON" scripts/audit_robotwin2_assets.py
   "$PYTHON" scripts/preprocess_robotwin2.py \

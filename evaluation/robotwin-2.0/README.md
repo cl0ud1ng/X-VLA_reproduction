@@ -34,6 +34,28 @@ You can configure custome evaluation in `eval_robotwin.sh`, such as log directry
 
 The client will stream observations (images, proprioception, and language) to the X-VLA model, receive predicted actions, and execute them within the RoboTwin-2.0 environment.
 
+## 8-GPU rollout
+
+The reproducible stage-D smoke/benchmark launcher covers the five frozen tasks
+on all three domains and keeps one simulator process per GPU:
+
+```bash
+bash scripts/run_robotwin2_rollout_8GPU.sh \
+  --host 127.0.0.1 --port 8000 \
+  --num-episodes 1
+```
+
+Set `NUM_EPISODES`, `ROLLOUT_SEED`, `TASK_CONFIG`, `MODEL_HOST`, `MODEL_PORT`,
+and `EVAL_LOG_DIR` through the environment when a different run is required.
+The Python scheduler `scripts/run_robotwin2_rollout.py` accepts `--gpus`,
+`--num-gpus`, `--tasks`, `--num-tasks`, `--domains`, and `--num-domains` for
+smaller matrices or other hardware. The shell wrapper fixes the main protocol
+to all eight GPUs, all three domains, all five tasks, `exec_points=1`, and
+video capture. `exec_points=1` is the required receding-horizon protocol;
+each simulator control step requests a fresh `[30,20]` prediction. Results are
+written under `outputs/robotwin_ft/eval_rollout/`, with per-cell logs and summaries
+and a top-level `run.json` recording commits, assignments, and conventions.
+
 ---
 
 ## 📊 Results (Using RoboTwin-2.0 Leaderboard Settings)
