@@ -26,7 +26,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$PYTHON" -m accelerate.commands.launch \
   train.py \
   --models models/X-VLA-Pt \
   --train_metas_path outputs/robotwin_ft/manifests/official_clean_50/total.json \
-  --output_dir "outputs/robotwin_ft/domain_balanced_30k/seed${SEED}" \
+  --output_dir "outputs/robotwin_ft/domain_balanced/seed${SEED}" \
   --sampler_mode domain_balanced \
   --batch_size 32 \
   --global_batch_size 256 \
