@@ -310,6 +310,8 @@ seed              = 0,1,2                    # 至少三次独立 seed
 
 full fine-tuning 下所有参数从第一步参与反向传播；如果使用 legacy `staged` ablation，才要求 `freeze_steps` 期间 VLM 和 transformer core 的学习率为 0。每个 checkpoint 保存 model、processor、`state.json`、总 manifest、git commit、backend/wrap policy 和完整命令行。global batch 256 的 8 卡 FSDP smoke 必须先通过，再启动长跑。
 
+训练入口通过 `--save_training_state` 控制是否在同一 checkpoint 目录额外保存 Accelerate training state（optimizer、随机数、scaler 和已 prepare 的 dataloader state）。主训练 launcher 默认传入该参数；省略时仍只保存模型权重和元数据。
+
 训练入口应使用 accelerator 的 `device` 移动 tensor，并对 dataloader 做正确的 worker/rank 划分；禁止直接写 `.cuda()` 或因为“iterable 不 prepare”而跳过分布式一致性。
 
 正式训练 launcher 使用 W&B（`--report_to wandb`）记录 run config、git/manifest provenance、loss 分项、总 loss、四组 learning rate、domain/task/terminal-hold 计数、gradient norm、step time 和资源使用情况。

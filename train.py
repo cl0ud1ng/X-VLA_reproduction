@@ -111,6 +111,14 @@ def get_args_parser():
     parser.add_argument("--save_interval", type=int, default=50000)
     parser.add_argument("--log_interval", type=int, default=20)
     parser.add_argument("--disable_checkpoint", action="store_true")
+    parser.add_argument(
+        "--save_training_state",
+        action="store_true",
+        help=(
+            "Also save the Accelerate training state (optimizer, RNG, scaler, "
+            "and prepared dataloader state) into each checkpoint."
+        ),
+    )
     parser.add_argument("--run_report_path", type=str, default="",
                         help="Optional JSON summary path for smoke/feasibility runs.")
 
@@ -469,8 +477,8 @@ def main(args):
             # FSDP full-state collection is collective; every rank must enter
             # get_state_dict, while only rank 0 writes the HF checkpoint.
             state_dict = accelerator.get_state_dict(model) if args.distributed_backend == "fsdp" else None
+            save_dir = os.path.join(output_dir, f"ckpt-{global_step}")
             if accelerator.is_main_process:
-                save_dir = os.path.join(output_dir, f"ckpt-{global_step}")
                 accelerator.print(f"💾 Saving model to {save_dir}")
                 unwrapped = accelerator.unwrap_model(model)
                 if state_dict is None:
@@ -478,10 +486,23 @@ def main(args):
                 else:
                     unwrapped.save_pretrained(save_dir, state_dict=state_dict, safe_serialization=True)
                 processor.save_pretrained(save_dir)
+
+            # ``Accelerator.save_state`` must be entered by every rank because
+            # FSDP gathers model/optimizer state collectively.  Keep its
+            # files beside the HF weights so the checkpoint is self-contained;
+            # using the legacy PyTorch format avoids overwriting
+            # ``model.safetensors`` written above.
+            accelerator.wait_for_everyone()
+            if args.save_training_state:
+                accelerator.save_state(output_dir=save_dir, safe_serialization=False)
+            accelerator.wait_for_everyone()
+
+            if accelerator.is_main_process:
                 with open(os.path.join(save_dir, "state.json"), "w") as f:
                     json.dump({"global_step": global_step, "sampler_mode": args.sampler_mode,
                                "manifest": os.path.abspath(args.train_metas_path),
                                "seed": args.seed, "git_commit": git_commit,
+                               "training_state_saved": args.save_training_state,
                                "world_size": accelerator.num_processes,
                                "per_device_batch_size": args.batch_size,
                                "global_batch_size": global_batch_size,

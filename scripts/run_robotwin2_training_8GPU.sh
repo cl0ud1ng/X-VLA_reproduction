@@ -44,6 +44,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 "$PYTHON" -m accelerate.commands.launch \
   --min_lr_ratio 0.1 \
   --max_grad_norm 1.0 \
   --save_interval 7500 \
+  --save_training_state \
   --log_interval 20 \
   --seed "$SEED" \
   --base_seed "$SEED" \

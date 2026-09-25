@@ -98,6 +98,14 @@ def get_args_parser():
     # Logging / saving
     parser.add_argument("--save_interval", type=int, default=50000)
     parser.add_argument("--log_interval", type=int, default=20)
+    parser.add_argument(
+        "--save_training_state",
+        action="store_true",
+        help=(
+            "Also save the Accelerate training state (optimizer, RNG and "
+            "scaler) into each checkpoint."
+        ),
+    )
 
     # System
     parser.add_argument("--seed", type=int, default=0)
@@ -273,13 +281,26 @@ def main(args):
         
         # Checkpointing
         global_step += 1
-        if accelerator.is_main_process:
-            if global_step == args.iters or global_step % args.save_interval == 0:
-                save_dir = os.path.join(output_dir, f"ckpt-{global_step}")
-                accelerator.print(f"💾 Saving model to {save_dir}")
-                accelerator.unwrap_model(model).save_pretrained(save_dir, safe_serialization=True)
-                with open(os.path.join(save_dir, "state.json"), "w") as f:
-                    json.dump({"global_step": global_step}, f)
+        should_save = global_step == args.iters or global_step % args.save_interval == 0
+        save_dir = os.path.join(output_dir, f"ckpt-{global_step}")
+        if should_save and accelerator.is_main_process:
+            accelerator.print(f"💾 Saving model to {save_dir}")
+            accelerator.unwrap_model(model).save_pretrained(save_dir, safe_serialization=True)
+            processor.save_pretrained(save_dir)
+
+        # ``Accelerator.save_state`` is a collective checkpoint operation in
+        # distributed runs, so every rank must enter it even though only rank
+        # zero writes the HF weights and metadata.
+        if should_save:
+            accelerator.wait_for_everyone()
+            if args.save_training_state:
+                accelerator.save_state(output_dir=save_dir, safe_serialization=False)
+            accelerator.wait_for_everyone()
+
+        if should_save and accelerator.is_main_process:
+            with open(os.path.join(save_dir, "state.json"), "w") as f:
+                json.dump({"global_step": global_step,
+                           "training_state_saved": args.save_training_state}, f, indent=2)
         
         if global_step >= args.iters: break
 
