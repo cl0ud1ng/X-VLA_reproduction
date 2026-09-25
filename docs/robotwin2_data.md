@@ -50,4 +50,6 @@ FSDP/full-FT 可行性 smoke 已完成（节点 `ssh -p 41844`，8×RTX 4090）�
 
 当前正式训练入口 [`scripts/run_robotwin2_training_8GPU.sh`](../scripts/run_robotwin2_training_8GPU.sh) 已切换为 FSDP full fine-tuning：每卡物理 batch `32`、global batch `256`、`gradient_accumulation_steps=1`、`15,000` optimizer steps、`learning_rate=5e-5`、`freeze_steps=0`、`warmup_steps=1000`、cosine decay、`save_interval=7500`。相较 7,500-step 试跑配置，步数和 warmup 同比例扩大；global batch 不变，因此学习率不变。launcher 同时传入 `--save_training_state`，每个 FSDP checkpoint 还保留 Accelerate 的 optimizer、随机数、scaler 和 dataloader state；`state.json` 会记录是否保存。FSDP full-state checkpoint 保存和 `state.json` 会记录 backend、wrap policy、全量可训练参数数目及 global batch。此前 DDP 下 per-GPU batch 32/16 的 full weight-finetuning OOM，不能作为 FSDP 可行性的结论；正式长跑前仍应先重跑上述 smoke 并确认节点空闲显存。
 
+需要 30,000 optimizer steps 时使用 [`scripts/run_robotwin2_training_8GPU_30k.sh`](../scripts/run_robotwin2_training_8GPU_30k.sh)。该变体固定默认 `seed=1`，每 `10,000` 步保存一次含 training state 的 checkpoint；保持 batch、学习率和其余 FSDP 参数不变，并将 warmup 从 `1,000` 按比例调整为 `2,000` 步。输出目录为 `outputs/robotwin_ft/domain_balanced_30k/seed1`。
+
 `configs/robotwin2_ft/base_poses.json` 记录了三个 domain 的 robot-base pose；ARX-X5 和双 Piper 使用 `[robot, robot, 0.60]` 的双臂任务语义。正式模型仿真 rollout 尚未开始；后续仍需在模型 client action base/world round-trip 和 receding-horizon 协议下执行阶段 D。
