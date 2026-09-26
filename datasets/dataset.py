@@ -90,9 +90,23 @@ class ManifestWindowDataset(IterableDataset):
             self._handlers[key] = handler
             self._entries[key] = entries
             self._pair_keys.append(key)
-        expected = {f"{d}::{t}" for d in range(3) for t in self.total.get("tasks", [])}
+        # The cross-embodiment manifest contains all 15 pairs.  Single-domain
+        # baselines intentionally contain only the five tasks for one domain,
+        # so derive the required pair set from the manifest instead of
+        # silently inventing missing domains.
+        manifest_domain_ids = sorted({int(pair["domain_id"]) for pair in self.total.get("pairs", [])
+                                      if pair.get("split") == "train"})
+        if not manifest_domain_ids:
+            raise ValueError("manifest has no train domains")
+        declared_domains = self.total.get("domains")
+        if isinstance(declared_domains, dict):
+            declared_ids = sorted({int(value["domain_id"]) for value in declared_domains.values()})
+            if declared_ids != manifest_domain_ids:
+                raise ValueError(f"manifest domain declaration {declared_ids} != train pairs {manifest_domain_ids}")
+        expected = {f"{d}::{t}" for d in manifest_domain_ids for t in self.total.get("tasks", [])}
         if set(self._pair_keys) != expected:
-            raise ValueError(f"manifest must contain all 15 train pairs; missing={sorted(expected-set(self._pair_keys))}")
+            raise ValueError(f"manifest train pairs do not match declared domains/tasks; missing={sorted(expected-set(self._pair_keys))}")
+        self._domain_ids = manifest_domain_ids
         probabilities = self.total["sampling"].get(sampler_mode, {}).get("probabilities")
         if not probabilities:
             raise ValueError(f"manifest has no {sampler_mode} probabilities")
@@ -137,7 +151,7 @@ class ManifestWindowDataset(IterableDataset):
             for key in self._pair_keys:
                 out.extend(self._entries[key][:per_domain])
         else:
-            for domain in range(3):
+            for domain in self._domain_ids:
                 keys = [k for k in self._pair_keys if k.startswith(f"{domain}::")]
                 for key in keys[:1]:
                     out.extend(self._entries[key][:per_domain])
